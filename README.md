@@ -273,3 +273,11 @@ The graph renders stored relationships only. Depth is a spatial layout, not a
 3D simulation or confidence value. API connectivity, observed agent events and
 verified host capture are distinct. Current snapshots are bounded; lossless
 event replay and current Codex App capture have not been verified.
+
+## Contributing, license and citation
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and review requirements.
+The [ProjectScone Research Attribution License](LICENSE) is custom and
+MIT-derived, with mandatory research and academic citation. Credit Mark
+Sturman, JudgeHuman and ProjectScone. [CITING.md](CITING.md) provides MLA,
+APA, Chicago and BibTeX examples; [CITATION.cff](CITATION.cff) provides metadata.
