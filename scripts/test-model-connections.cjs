@@ -8,9 +8,9 @@ let server,browser,base;
 const config={base_url:'http://127.0.0.1:8080/v1/',model:'local-model',timeout_s:180,api_key_env:null,voice:null,sample_rate:24000};
 const snapshot=(revision=3,model='local-model')=>({schema_version:1,revision,connections:{chat:{...config,model},extraction:null,vision:null,transcription:null,speech:null}});
 before(async()=>{
-  const root=path.resolve(__dirname,'../Webapp');
+  const root=path.resolve(__dirname,'..');
   const {createServer}=await import(pathToFileURL(path.join(root,'node_modules/vite/dist/node/index.js')).href);
-  server=await createServer({root,server:{port:0,strictPort:false,proxy:{'/v1':undefined,'/healthz':undefined,'/__native_console':undefined}}});
+  server=await createServer({root,server:{port:0,strictPort:false,proxy:{'/v1':undefined,'/healthz':undefined,'/__scone/session':undefined}}});
   await server.listen();base=`http://127.0.0.1:${server.httpServer.address().port}`;
   browser=await chromium.launch({headless:true,executablePath:process.env.SCONE_BROWSER_PATH,args:['--disable-gpu']});
 });

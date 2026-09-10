@@ -106,7 +106,7 @@ async function fixture(t, {empty=false,mobile=false,dev=false,noKey=false,memory
   let capabilityCalls=0; const requested=[];
   let graphNodes = crowded ? [{id:'session:codex:busy',kind:'session',label:'Codex busy',data:{agent:'codex',session_id:'busy'}}, ...Array.from({length:240},(_,i)=>({id:`tool:${i}`,kind:'tool_call',label:'Bash',ts:`2026-09-06T03:00:${String(i%60).padStart(2,'0')}Z`,data:{agent:'codex'}}))] : nodes;
   let graphEdges = crowded ? graphNodes.slice(1).map(n=>({source:'session:codex:busy',target:n.id,kind:'invoked'})) : edges;
-  const file=process.env.SCONE_PLAYGROUND_HTML || path.join(root,'crates/scone/src/playground.html');
+  const file=process.env.SCONE_PLAYGROUND_HTML || path.join(root,'dist/console.html');
   // Existing console is the pre-feature baseline until the playground exists.
   const html=fs.readFileSync(file,'utf8').replaceAll('__SCONE_TOKEN__',noKey?'__SCONE_TOKEN__':'fixture-key');
   const server=http.createServer((req,res)=>{

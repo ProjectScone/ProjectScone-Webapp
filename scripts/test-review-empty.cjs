@@ -9,7 +9,7 @@ let browser;
 before(async()=>{browser=await chromium.launch({headless:true,executablePath:process.env.SCONE_BROWSER_PATH});});
 after(async()=>{await browser?.close();});
 async function fixture(t,{supported=true,mobile=false}={}){
-  const html=fs.readFileSync(process.env.SCONE_PLAYGROUND_HTML||path.resolve(__dirname,'../python/memory/src/scone_memory/api/playground.html'),'utf8').replaceAll('__SCONE_TOKEN__','review-fixture');
+  const html=fs.readFileSync(process.env.SCONE_PLAYGROUND_HTML||path.resolve(__dirname,'../dist/console.html'),'utf8').replaceAll('__SCONE_TOKEN__','review-fixture');
   const requests=[];
   const server=http.createServer((req,res)=>{
     const url=new URL(req.url,'http://fixture');

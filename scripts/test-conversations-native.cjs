@@ -6,13 +6,13 @@ const {once}=require('node:events');
 const path=require('node:path');
 const {chromium}=require(process.env.SCONE_PLAYWRIGHT_MODULE||'playwright');
 const root=path.resolve(__dirname,'..');
-const {pythonLayout}=require('./python-layout.cjs');
+const {fixtureHost,testPython}=require('./fixture-host.cjs');
 
 async function fixture(t,{reopened=false,scoped=false,streaming=false,composed=false,historyOnly=false,personas=false,processing=false}={}){
   const html=process.env.SCONE_CONVERSATIONS_HTML;
   assert.ok(html,'SCONE_CONVERSATIONS_HTML must name the verified isolated webapp artifact');
-  const server=spawn(process.env.SCONE_TEST_PYTHON||path.join(pythonLayout(root).project,'.venv/bin/python'),
-    ['-u',path.join(__dirname,'fixtures/conversation-server.py'),html,...(reopened?['--reopened']:[]),...(scoped?['--scoped']:[]),...(streaming?['--streaming']:[]),...(composed?['--composed']:[]),...(historyOnly?['--history-only']:[]),...(personas?['--personas']:[]),...(processing?['--processing']:[])],{cwd:root,stdio:['pipe','pipe','pipe']});
+  const server=spawn(testPython(),
+    ['-u',path.join(__dirname,'fixtures/conversation-server.py'),...(reopened?['--reopened']:[]),...(scoped?['--scoped']:[]),...(streaming?['--streaming']:[]),...(composed?['--composed']:[]),...(historyOnly?['--history-only']:[]),...(personas?['--personas']:[]),...(processing?['--processing']:[])],{cwd:root,stdio:['pipe','pipe','pipe']});
   let browser,logs='';server.stderr.on('data',part=>{logs=(logs+part).slice(-6000);});
   const closed=once(server,'close');
   let modelEntered;const modelWaiting=new Promise(resolve=>{modelEntered=resolve;});
@@ -35,13 +35,14 @@ async function fixture(t,{reopened=false,scoped=false,streaming=false,composed=f
     server.once('error',error=>{clearTimeout(timer);reject(error);});
     server.once('exit',code=>{clearTimeout(timer);reject(Error(`Fixture exited ${code}: ${logs}`));});
   });
-  const base=`http://127.0.0.1:${port}`;
+  let base=`http://127.0.0.1:${port}`;
   let ready=false;
   for(let i=0;i<100;i++){
     try{if((await fetch(base+'/healthz',{signal:AbortSignal.timeout(500)})).ok){ready=true;break;}}catch{}
     await new Promise(resolve=>setTimeout(resolve,25));
   }
   assert.ok(ready,'isolated API became ready: '+logs);
+  base=await fixtureHost(t,{backend:base,html});
   browser=await chromium.launch({headless:true,executablePath:process.env.SCONE_BROWSER_PATH,args:['--disable-gpu']});
   const page=await browser.newPage({viewport:{width:1320,height:940}});
   const errors=[];page.on('pageerror',error=>errors.push(error.message));
@@ -290,7 +291,7 @@ test('claim relationships navigate real premises, preserve direction and disclos
 for(const composed of [false,true])test(`native concepts deep links stay public and navigate into authenticated memory, composed=${composed}`,{timeout:60000},async t=>{
   const {page,base,errors}=await fixture(t,{composed});
   page.setDefaultTimeout(8000);
-  for(const [path,title] of [['/learn','Knowledge that carries forward.'],['/learn/how-it-works','From a source to useful context.'],['/learn/graph-memory','Connected, not unquestionable.']]){
+  for(const [path,title] of [['/learn','What is Scone?'],['/learn/how-it-works','How Scone works'],['/learn/graph-memory','Graph memory']]){
     const response=await page.goto(base+path);
     assert.equal(response.status(),200);
     await page.getByRole('heading',{name:title,exact:true}).waitFor();
@@ -306,7 +307,7 @@ for(const composed of [false,true])test(`native concepts deep links stay public 
 });
 
 test('published concepts quickstart runs against native memory with retained source and isolated recall',{timeout:60000},async t=>{
-  const {sourceExample}=await import('../Webapp/src/learn/content.ts');
+  const {sourceExample}=await import('../src/learn/content.ts');
   const {base,errors}=await fixture(t,{composed:true});
   const process=spawn('/bin/sh',['-ec',sourceExample],{env:{...global.process.env,SCONE_URL:base,SCONE_KEY:'conversation-fixture-alpha'},stdio:['ignore','pipe','pipe']});
   let output='',error='';process.stdout.on('data',part=>output+=part);process.stderr.on('data',part=>error+=part);

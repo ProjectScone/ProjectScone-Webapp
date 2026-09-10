@@ -6,12 +6,12 @@ const {once}=require('node:events');
 const path=require('node:path');
 const {chromium}=require(process.env.SCONE_PLAYWRIGHT_MODULE||'playwright');
 const root=path.resolve(__dirname,'..');
-const {pythonLayout}=require('./python-layout.cjs');
+const {fixtureHost,testPython}=require('./fixture-host.cjs');
 
 test('stored image bytes survive native recall and render in the real webapp',{timeout:40000},async t=>{
   const html=process.env.SCONE_PLAYGROUND_HTML;
   assert.ok(html,'SCONE_PLAYGROUND_HTML must name a freshly built isolated artifact');
-  const server=spawn(process.env.SCONE_TEST_PYTHON||path.join(pythonLayout(root).project,'.venv/bin/python'),['-u','-c',String.raw`
+  const server=spawn(testPython(),['-u','-c',String.raw`
 import asyncio, socket, sys
 from pathlib import Path
 import uvicorn
@@ -19,11 +19,9 @@ from scone_memory import MemoryEngine, HashEmbedder, InMemoryDocumentStore, InMe
 from scone_memory import InMemoryEventLog
 import importlib
 api_module = importlib.import_module('scone_memory.api.app')
-api_module.CONSOLE = Path(sys.argv[1])
-api_module.PLAYGROUND = Path(sys.argv[1])
 async def run():
     engine = await MemoryEngine(InMemoryDocumentStore(), InMemoryVectorIndex(), HashEmbedder(), events=InMemoryEventLog()).open()
-    app = api_module.create_app(engine, {'media-fixture-key':'media-test', 'other-fixture-key':'other-test'}, console_key='media-fixture-key')
+    app = api_module.create_app(engine, {'media-fixture-key':'media-test', 'other-fixture-key':'other-test'})
     sock = socket.socket()
     sock.bind(('127.0.0.1', 0))
     print('MEDIA_READY ' + str(sock.getsockname()[1]), flush=True)
@@ -37,11 +35,12 @@ asyncio.run(run())
     server.once('exit',code=>reject(Error(`Fixture server exited ${code}: ${logs}`)));
     server.once('error',reject);
   });
-  const base=`http://127.0.0.1:${port}`;
+  let base=`http://127.0.0.1:${port}`;
   for(let i=0;i<100;i++){
     try{if((await fetch(base+'/healthz')).ok)break;}catch{}
     await new Promise(resolve=>setTimeout(resolve,25));
   }
+  base=await fixtureHost(t,{backend:base,html,uiKey:'media-fixture-key'});
   const headers={authorization:'Bearer media-fixture-key'};
   const bytes=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZ1sAAAAASUVORK5CYII=','base64');
   const stored=await fetch(base+'/v1/attachments',{method:'POST',headers:{...headers,'content-type':'image/png','x-filename':'native-source.png'},body:bytes});

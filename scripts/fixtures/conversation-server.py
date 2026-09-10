@@ -91,18 +91,17 @@ def persona_registry():
 
 
 async def run():
-    conversations.PLAYGROUND = Path(sys.argv[1])
     memory = await MemoryEngine(InMemoryDocumentStore(), InMemoryVectorIndex(), HashEmbedder()).open()
     await memory.remember("alpha", "Juniper is calibrated with Polaris.", metadata={"collection": "manuals"})
-    if "--scoped" in sys.argv[2:]:
+    if "--scoped" in sys.argv[1:]:
         await memory.remember("alpha", "Juniper scope-eligible-guide.", kind="file", source="docs/guide.md",
                               created_at="2026-09-02", metadata={"collection": "manuals"})
         await memory.remember("alpha", "Juniper scope-excluded-guide.", kind="file", source="private/guide.md",
                               created_at="2026-09-02", metadata={"collection": "manuals"})
     with TemporaryDirectory(prefix="scone-browser-conversations-") as temporary:
-        composed = "--composed" in sys.argv[2:]
+        composed = "--composed" in sys.argv[1:]
         catalog_env = {}
-        if "--personas" in sys.argv[2:]:
+        if "--personas" in sys.argv[1:]:
             catalog_path = Path(temporary) / "personas.json"
             catalog_path.write_text(json.dumps([{
                 "schema_version": 1, "id": name, "name": name.title(), "instructions": "Be the " + name,
@@ -113,7 +112,7 @@ async def run():
             } for name in ("guide", "coach")]), encoding="utf-8")
             catalog_env = {"SCONE_CONVERSATIONS_PERSONAS": str(catalog_path),
                            "SCONE_CONVERSATIONS_REGISTRY": "__main__:persona_registry"}
-        if "--processing" in sys.argv[2:]:
+        if "--processing" in sys.argv[1:]:
             from scone_memory import FakeChat
             from scone_memory.api import app as memory_api
             from scone_memory.ingestion.derive import Deriver
@@ -124,11 +123,10 @@ async def run():
             model = FakeChat([json.dumps([{"subject": "mark", "predicate": "works_in", "object": "lisbon",
                                            "premises": [first.fact_id, second.fact_id], "confidence": 0.7}])])
             worker = ConsolidationWorker(memory, None, [], interval_s=999, deriver=Deriver(memory, model))
-            memory_api.CONSOLE = memory_api.PLAYGROUND = Path(sys.argv[1])
             app = memory_api.create_app(memory, {
                 "conversation-fixture-alpha": "alpha", "conversation-fixture-beta": "beta",
                 "conversation-fixture-reader": "alpha",
-            }, roles={"conversation-fixture-reader": "read"}, console=True, worker=worker)
+            }, roles={"conversation-fixture-reader": "read"}, worker=worker)
         elif composed:
             # Exercise the same builders as `scone-memory serve`, not a
             # hand-composed approximation. Only these explicit test settings
@@ -144,7 +142,7 @@ async def run():
                 "SCONE_CONVERSATIONS_JOURNAL": str(Path(temporary) / "sessions.db"),
                 **catalog_env,
                 **({"SCONE_CONVERSATIONS_MODEL_FACTORY": "__main__:ScriptedModel"}
-                   if "--history-only" not in sys.argv[2:] and not catalog_env else {}),
+                   if "--history-only" not in sys.argv[1:] and not catalog_env else {}),
             })
             app = build_app(settings, memory)
         else:
@@ -153,12 +151,11 @@ async def run():
                 Path(temporary) / "sessions.db",
                 lambda space, sid: TextConversation(memory, space, sid, ScriptedModel,
                                                    where={"collection": "manuals"}),
-                console=True,
-                public_text_streaming="--streaming" in sys.argv[2:],
+                public_text_streaming="--streaming" in sys.argv[1:],
                 **({"scoped_runtime_factory": lambda space, sid, scope: TextConversation(
-                    memory, space, sid, ScopedModel, **scope.kwargs())} if "--scoped" in sys.argv[2:] else {}),
+                    memory, space, sid, ScopedModel, **scope.kwargs())} if "--scoped" in sys.argv[1:] else {}),
             )
-        if "--reopened" in sys.argv[2:]:
+        if "--reopened" in sys.argv[1:]:
             # Exercise real service teardown/recreation with a retained
             # journal and memory engine. No provider or fixture-only API.
             async with app.router.lifespan_context(app):
@@ -189,12 +186,12 @@ async def run():
             else:
                 app = conversations.create_conversation_app(
                     memory, {"conversation-fixture-alpha": "alpha", "conversation-fixture-beta": "beta"},
-                    Path(temporary) / "sessions.db", None, console=True,
+                    Path(temporary) / "sessions.db", None,
                 )
         with socket.socket() as sock:
             sock.bind(("127.0.0.1", 0))
             print("CONVERSATIONS_READY " + str(sock.getsockname()[1]), flush=True)
-            if "--processing" in sys.argv[2:]:
+            if "--processing" in sys.argv[1:]:
                 server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=0, log_level="error"))
             else:
                 server = build_server(settings, app) if composed else create_server(app, host="127.0.0.1", port=0)

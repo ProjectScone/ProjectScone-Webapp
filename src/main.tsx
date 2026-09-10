@@ -8,5 +8,5 @@ import './playground/graph.css';
 import './identity.css';
 import './shell.css';
 
-const initialKey = import.meta.env.DEV ? await localSession() : consoleAccessKey(document.documentElement.outerHTML);
+const initialKey = import.meta.env.DEV ? await localSession(location.pathname) : consoleAccessKey(document.documentElement.outerHTML);
 createRoot(document.getElementById('root')!).render(<App initialKey={initialKey} />);

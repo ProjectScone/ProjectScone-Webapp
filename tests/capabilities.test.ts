@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parseCapabilities } from '../src/capabilities.ts';
 
-const fixtures = JSON.parse(readFileSync(new URL('../../tests/fixtures/http-capabilities.json', import.meta.url), 'utf8'));
+const fixtures = JSON.parse(readFileSync(new URL('./fixtures/http-capabilities.json', import.meta.url), 'utf8'));
 test('image inference requires its own explicit capability',()=>{
   const features={...fixtures.python.features};delete features['images.understand'];
   assert.equal(parseCapabilities({...fixtures.python,features}).features['images.understand'],false);

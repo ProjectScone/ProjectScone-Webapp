@@ -11,7 +11,7 @@ const {pathToFileURL}=require('node:url');
 const {chromium}=require(process.env.SCONE_PLAYWRIGHT_MODULE||'playwright');
 let browser,server,base,bundle;
 before(async()=>{
-  const {build}=await import(pathToFileURL(path.resolve(__dirname,'../Webapp/node_modules/vite/dist/node/index.js')));
+  const {build}=await import(pathToFileURL(path.resolve(__dirname,'../node_modules/vite/dist/node/index.js')));
   const output=fs.mkdtempSync(path.join(os.tmpdir(),'scone-voice-build-'));
   await build({configFile:false,logLevel:'error',build:{outDir:output,emptyOutDir:false,minify:true,lib:{entry:path.resolve(__dirname,'fixtures/voice-browser.ts'),formats:['es'],fileName:()=> 'voice.js'}}});
   bundle=fs.readFileSync(path.join(output,'voice.js'));
@@ -137,8 +137,8 @@ for(const reason of ['abort','server failure','pagehide','device ended'])test(`v
 
 async function nativeService(t,{interrupt=false}={}){
   const root=path.resolve(__dirname,'..');
-  const {pythonLayout}=require('./python-layout.cjs');
-  const child=spawn(process.env.SCONE_TEST_PYTHON||path.join(pythonLayout(root).project,'.venv/bin/python'),['-u',path.join(__dirname,'fixtures/voice-server.py'),...(interrupt?['--interrupt']:[])],{cwd:root,stdio:['pipe','pipe','pipe']});
+  const {fixtureHost,testPython}=require('./fixture-host.cjs');
+  const child=spawn(testPython(),['-u',path.join(__dirname,'fixtures/voice-server.py'),...(interrupt?['--interrupt']:[])],{cwd:root,stdio:['pipe','pipe','pipe']});
   let logs='';child.stderr.on('data',data=>logs=(logs+data).slice(-6000));const ended=once(child,'close');
   t.after(async()=>{
     if(child.exitCode===null&&child.signalCode===null)child.stdin.end('stop\n');
@@ -152,11 +152,12 @@ async function nativeService(t,{interrupt=false}={}){
     child.once('error',error=>{clearTimeout(timeout);reject(error);});
     child.once('exit',()=>{clearTimeout(timeout);reject(Error('Native voice exited: '+logs));});
   });
-  const origin='http://127.0.0.1:'+port,headers={authorization:'Bearer voice-alpha','content-type':'application/json'};
+  let origin='http://127.0.0.1:'+port;const headers={authorization:'Bearer voice-alpha','content-type':'application/json'};
   for(let i=0;i<100;i++){
     try{const r=await fetch(origin+'/v1/conversations/capabilities',{headers});if(r.ok){await r.body.cancel();break;}}catch{}
     await new Promise(resolve=>setTimeout(resolve,25));
   }
+  origin=await fixtureHost(t,{backend:origin,html:process.env.SCONE_CONVERSATIONS_HTML||path.resolve(__dirname,'../dist/console.html')});
   const catalog=await(await fetch(origin+'/v1/conversations/personas',{headers})).json();
   const response=await fetch(origin+'/v1/conversations',{method:'POST',headers,body:JSON.stringify({request_id:'browser-voice',capture:true,mode:'voice',persona:'guide',persona_fingerprint:catalog.personas[0].fingerprint})});
   assert.equal(response.status,200);const session=await response.json();assert.equal(session.state,'created');

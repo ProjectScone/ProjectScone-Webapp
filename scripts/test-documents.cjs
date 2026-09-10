@@ -11,7 +11,7 @@ before(async()=>{browser=await chromium.launch({headless:true,executablePath:pro
 after(async()=>{await browser?.close();});
 const row=(id,kind='file')=>({episode_id:id,kind,source:kind==='file'?`guide-${id}.md`:null,created_at:'2026-09-06',byte_count:1600,preview:`Source ${id} <script>not markup</script>`,preview_truncated:true});
 async function fixture(t,{supported=true,mobile=false,crowded=false,sourceRead=true}={}){
-  const html=fs.readFileSync(process.env.SCONE_DOCUMENTS_HTML,'utf8').replaceAll('__SCONE_TOKEN__','documents-fixture');
+  const html=fs.readFileSync(process.env.SCONE_DOCUMENTS_HTML||path.resolve(__dirname,'../dist/console.html'),'utf8').replaceAll('__SCONE_TOKEN__','documents-fixture');
   const requests=[];const state={fail:false,malformed:false,delay:null,detailDelay:null,empty:false,space:'library',sourceStatus:200,wrongId:false};
   const server=http.createServer(async(req,res)=>{
     const url=new URL(req.url,'http://fixture');

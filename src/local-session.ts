@@ -1,4 +1,4 @@
-// The native loopback console already supplies this key to the local browser.
+// The independent UI host may supply an explicit runtime key to local browsers.
 // Read only its explicit bootstrap field; never scrape settings or transcripts.
 export function consoleAccessKey(html: string): string {
   const bootstrap = html.match(/<script id="scone-bootstrap" type="application\/json">([^<]*)<\/script>/);
@@ -17,9 +17,12 @@ export function consoleAccessKey(html: string): string {
     return value.startsWith('__SCONE_') ? '' : value;
   } catch { return ''; }
 }
-export async function localSession() {
+export async function localSession(pathname: string): Promise<string> {
+  if (/^\/(?:learn|docs)(?:\/|$)/.test(pathname)) return '';
   try {
-    const response = await fetch('/__native_console', { cache: 'no-store', signal: AbortSignal.timeout(3000) });
-    return response.ok ? consoleAccessKey(await response.text()) : '';
+    const response = await fetch('/__scone/session', { cache: 'no-store', signal: AbortSignal.timeout(3000) });
+    if (!response.ok) return '';
+    const value: unknown = await response.json();
+    return value !== null && typeof value === 'object' && 'key' in value && typeof value.key === 'string' && !value.key.startsWith('__SCONE_') ? value.key : '';
   } catch { return ''; }
 }

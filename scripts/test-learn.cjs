@@ -9,7 +9,7 @@ let browser;
 before(async()=>{browser=await chromium.launch({headless:true,executablePath:process.env.SCONE_BROWSER_PATH,args:['--disable-gpu']});});
 after(async()=>{await browser?.close();});
 async function fixture(t,{mobile=false,clipboardFails=false}={}) {
-  const html=fs.readFileSync(process.env.SCONE_LEARN_HTML||path.resolve(__dirname,'../crates/scone/src/playground.html'),'utf8');
+  const html=fs.readFileSync(process.env.SCONE_LEARN_HTML||path.resolve(__dirname,'../dist/console.html'),'utf8');
   const requests=[];
   const server=http.createServer((req,res)=>{
     requests.push({url:req.url,method:req.method});

@@ -1,63 +1,72 @@
 # Scone Webapp
 
-The repository-owned React + TypeScript frontend, using React Router and Vite.
-Work here, not in generated native package HTML copies.
+Repository: https://github.com/ProjectScone/ProjectScone-Webapp
+
+Independent React + strict TypeScript workspace for the Scone HTTP API. Python
+and Rust sources are separate repositories. No sibling checkout is required to
+build, test or serve this application.
 
 ```sh
-cd Webapp
 pnpm install --frozen-lockfile
-pnpm dev
-```
-
-Open http://127.0.0.1:5173/memory. Vite supplies React Fast Refresh during development.
-The development proxy uses the existing local Scone API on port 7437. Start
-that backend first; the app does not create a mock engine or seed conversations.
-Set `SCONE_DEV_API=http://127.0.0.1:PORT` to select another loopback backend.
-Remote upstreams are intentionally rejected by this development configuration.
-
-In development, the app reads the explicit access-key bootstrap from the same
-local console already serving this browser. It never reads host settings or
-transcripts. If no single key is exposed, the access-key dialog remains available.
-Keys stay in page memory, never `localStorage` or `VITE_` environment variables.
-
-```sh
 pnpm test
 pnpm typecheck
 pnpm build
 pnpm check:assets
+SCONE_API_URL=http://127.0.0.1:7437 pnpm start
 ```
 
-Production packaging embeds built JS, CSS and the original Scone mark into both
-native playground distributions and the Python Memory console. Node is not required to run the packaged Rust
-or Python server. `dist/` and `node_modules/` are ignored. The lockfile belongs to
-this app; CI and the AWS image use pnpm 9.9.0 with `pnpm-lock.yaml` as the primary
-lockfile. Keep the retained npm compatibility lock synchronized when changing
-dependencies. Upstream projects under `../reference/` are ignored reference material.
-
-CI and release workflows rebuild these embedded assets before Rust compilation
-and Python wheel packaging. When building native apps locally from source, run
-`pnpm --dir Webapp build` first. Source-only UI commits do not update an already
-compiled Rust binary; Python's UI reload mode can read freshly packaged files.
-
-To test a backend-dependent UI before publishing it to running native servers:
+Node 24 and pnpm 9.9.0 are used in CI. Open http://127.0.0.1:5173/memory.
+`pnpm build` embeds JavaScript and CSS into ignored `dist/console.html`.
+`check:assets` checks that artifact without writing anything. To supply an
+external native consumer, explicitly choose its staging artifact:
 
 ```sh
-pnpm typecheck
-pnpm exec vite build
 node scripts/package.mjs --output /private/tmp/scone-preview.html
 ```
 
-Set `SCONE_PLAYGROUND_HTML` to that file when running `scripts/test-playground.cjs`.
-This stages an embedded artifact without replacing the packaged native pages.
-Run the ordinary build/package command only after the target backend supports
-the required contract.
+The build never updates another repository. The Node host binds to loopback and
+requires `SCONE_API_URL` naming a local HTTP(S) API origin. Configure optional
+`SCONE_UI_PORT` (default 5173) or `SCONE_UI_HTML` for an alternate built artifact.
+It proxies `/v1` and `/healthz`, preserving bearer authentication, streaming SSE
+and WebSocket traffic. It never supplies a backend credential automatically.
+The backend remains responsible for API authorization. API errors remain API
+responses, and named workspace deep links receive the React application.
 
-The Memory page discovers supported operations through authenticated
-`GET /v1/capabilities` before loading workflows. Unknown/malformed responses and
-transport failures remain visible and retryable; a failed request never means
-an operation is unsupported. Deep links stay intact. See
-the versioned contract in `tests/fixtures/http-capabilities.json`. This is feature discovery,
-not a replacement for server-side authorization or an uptime guarantee.
+Enter your space key through the Connect dialog. An optional `SCONE_UI_KEY`
+may be supplied **at host runtime** for a single local space; it is never read
+by packaging or included in build output. Bootstrap requires both a loopback
+peer and one valid raw loopback Host header; forwarded headers cannot authorize
+it. Credential-bearing pages and `/__scone/session` use `no-store`. Public guides
+stay keyless. Keys live only in browser memory; never configure a `VITE_` key.
+Restart the production host after replacing its HTML artifact.
+
+For React Fast Refresh, run `pnpm dev`. Vite proxies the local backend at port
+7437; set `SCONE_DEV_API=http://127.0.0.1:PORT` to override it. Vite serves its own
+runtime bootstrap endpoint and does not fetch HTML from the Python API.
+
+Browser suites live in `scripts/test-*.cjs` and fixtures in `scripts/fixtures`.
+Install Playwright in a test environment or set `SCONE_PLAYWRIGHT_MODULE` to its
+module; optionally set `SCONE_BROWSER_PATH`. Run fixture suites using:
+
+```sh
+node --test scripts/test-learn.cjs scripts/test-documents.cjs scripts/test-conversations.cjs
+```
+
+They default to `dist/console.html`; explicit `SCONE_*_HTML` overrides remain
+available. Python integration suites require `SCONE_TEST_PYTHON` pointing to an
+interpreter with the separate Scone API and relevant optional realtime packages
+installed. They start disposable API processes and this repository's UI proxy;
+they never connect to the running memory store. For example:
+
+```sh
+SCONE_TEST_PYTHON=/explicit/environment/bin/python \
+SCONE_CONVERSATIONS_HTML="$PWD/dist/console.html" \
+node --test scripts/test-conversations-native.cjs
+```
+
+The HTTP capability fixture is local at `tests/fixtures/http-capabilities.json`.
+Keep it in sync through explicit reviewed contract updates. Original project
+license and citation attribution remain in `LICENSE` and `CITATION.cff`.
 
 ## Documents: retained-source library
 
@@ -94,7 +103,7 @@ The browser boundary suite is `scripts/test-documents.cjs`, with
 `SCONE_DOCUMENTS_HTML` pointing to the isolated packaged artifact above.
 `scripts/test-conversations-native.cjs` also covers Documents pagination, import,
 literal readback, original images and cross-space denial against a disposable
-native Python service. Neither suite uses the live memory database.
+Python API service with a separate UI host. Neither suite uses the live memory database.
 
 ## Current boundaries
 
@@ -185,24 +194,14 @@ CLIs retain their own independently tested workflows.
   the optional Python conversation API; provider configuration is server-owned.
   No voice/video or token-level telemetry is claimed.
 - `src/api.ts`, `src/types.ts`: authenticated API client and evidence wire types.
-- `src/local-session.ts`: explicit local development bootstrap.
-- `src/components/DevReload.tsx`: opt-in ETag reload for native development previews.
+- `src/local-session.ts`: explicit UI-host runtime bootstrap.
+- `src/components/DevReload.tsx`: opt-in ETag revision checks.
 - `src/workspace.css`, `src/identity.css`: layout and original Scone identity.
 - `src/assets/`: runtime images; `assets/`: original mark and generation record.
 - `/memory`, `/playground` and `/conversations/:sid?` are React routes in one application; `/` redirects
   to `/memory`. Development proxies only API traffic and local auth bootstrap.
-- The Python memory server serves Memory and Playground directly (the local preview uses port
-  7437). Rust packages the same Playground app; its existing native root console
-  remains until Memory-page capability parity is independently verified.
-
-The optional Python conversation service accepts `console=True` to serve the
-packaged webapp at `/memory`, `/playground`, `/conversations` and session deep
-links, alongside its memory/conversation APIs. Page hosting defaults to off and
-never embeds a space or provider key. A full reload asks for the space key again.
-The ordinary native memory servers do not provide conversation hosting or a
-configured provider. For separate hosting, route these page paths to the React
-application and `/v1/conversations` to the optional service. Vite handles SPA
-paths in development. Adding a route does not configure or launch a provider.
+- This repository's Node host serves page routes and proxies API requests to the
+  explicitly configured local backend. Python services serve APIs only.
 
 Saved sessions remain readable without a configured text model; starting and
 sending require one. On reopening, the optional conversation API's
@@ -257,8 +256,8 @@ These controls narrow retrieved knowledge, not transcript capture, the session's
 own history or server-side access policy.
 
 `scripts/test-conversations-native.cjs` additionally exercises the actual Python
-conversation API, native memory and Pipecat scheduler through the browser. Set
-`SCONE_TEST_PYTHON` to an environment with Scone's `api` and Pipecat dependencies,
+conversation API, native memory and realtime adapters through the browser. Set
+`SCONE_TEST_PYTHON` to an environment with Scone's `api` and relevant realtime dependencies,
 plus `SCONE_CONVERSATIONS_HTML` and the browser settings above. The Python
 fixture uses temporary state and scripted model frames, not provider inference.
 For an existing split local test installation, `SCONE_TEST_EXTRA_SITEPACKAGES`

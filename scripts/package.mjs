@@ -1,11 +1,9 @@
-// Bundle once, embed into both native products. Node is build-time only.
+// Package a portable HTML artifact. External consumers choose their own output path.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import pythonProject from '../../scripts/python-layout.cjs';
 
 const app = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const repo = path.resolve(app, '..');
 const dist = path.join(app, 'dist');
 let html = fs.readFileSync(path.join(dist, 'index.html'), 'utf8');
 function asset(url) {
@@ -27,16 +25,10 @@ if (outputIndex !== -1) {
   fs.writeFileSync(path.resolve(output), bytes);
   process.exit(0);
 }
-// Resolve before writing any target: an incomplete/ambiguous move must not publish
-// Rust's UI and then fail halfway through Python's copies.
-const {source} = pythonProject.pythonLayout(repo);
-const targets = [path.join(repo, 'crates/scone/src/playground.html'), path.join(source, 'api/playground.html'), path.join(source, 'api/console.html')];
-let drift = false;
-for (const file of targets) {
-  if (process.argv.includes('--check')) {
-    if (!fs.existsSync(file) || !fs.readFileSync(file).equals(bytes)) {
-      process.stderr.write('Console build drift: ' + path.relative(repo, file) + '\n'); drift = true;
-    }
-  } else fs.writeFileSync(file, bytes);
-}
-if (drift) process.exitCode = 1;
+const target = path.join(dist, 'console.html');
+if (process.argv.includes('--check')) {
+  if (!fs.existsSync(target) || !fs.readFileSync(target).equals(bytes)) {
+    process.stderr.write('Console build drift: dist/console.html\n');
+    process.exitCode = 1;
+  }
+} else fs.writeFileSync(target, bytes);

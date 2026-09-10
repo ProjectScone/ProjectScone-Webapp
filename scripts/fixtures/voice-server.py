@@ -15,9 +15,6 @@ from scone_memory.realtime.catalog import bind_catalog
 from scone_memory.realtime.persona import Persona
 from scone_memory.realtime.providers import ProviderRegistry
 interrupt = "--interrupt" in sys.argv
-ui = os.environ.get('SCONE_CONVERSATIONS_HTML')
-if ui:
-    conversations.PLAYGROUND = Path(ui)
 first_spoken = asyncio.Event()
 
 
@@ -80,7 +77,7 @@ async def run():
     with TemporaryDirectory(prefix="scone-browser-voice-") as temporary:
         app = create_conversation_app(memory, {"voice-alpha": "alpha", "voice-beta": "beta"},
                                       Path(temporary) / "journal.db", None,
-                                      catalog=bind_catalog([persona], registry), console=bool(ui))
+                                      catalog=bind_catalog([persona], registry))
         with socket.socket() as sock:
             sock.bind(("127.0.0.1", 0))
             print("VOICE_READY " + str(sock.getsockname()[1]), flush=True)

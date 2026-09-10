@@ -32,9 +32,9 @@ function response(query='Why did we choose Cedar?'){
   return {event_id:4,items:[{chunk_id:2,episode_id:3,text:quote,score:.7,created_at:'2026-09-07T12:00:00Z',source:'Decision log',metadata:{},tags:[]}],facts:[],degraded:[],returned_bytes:80,space_bytes:300,evidence_graph};
 }
 before(async()=>{
-  const root=path.resolve(__dirname,'../Webapp');
+  const root=path.resolve(__dirname,'..');
   const {createServer}=await import(pathToFileURL(path.join(root,'node_modules/vite/dist/node/index.js')).href);
-  server=await createServer({root,server:{port:0,strictPort:false,proxy:{'/v1':undefined,'/healthz':undefined,'/__native_console':undefined}}});
+  server=await createServer({root,server:{port:0,strictPort:false,proxy:{'/v1':undefined,'/healthz':undefined,'/__scone/session':undefined}}});
   await server.listen();base=`http://127.0.0.1:${server.httpServer.address().port}`;
   browser=await chromium.launch({headless:true,executablePath:process.env.SCONE_BROWSER_PATH,args:['--disable-gpu']});
 });

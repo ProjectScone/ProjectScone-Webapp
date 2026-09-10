@@ -15,7 +15,7 @@ function job(id){return {job_id:`batch-${id}`,space:'alpha',created_at:at,reques
   {index:1,episode_id:id*2+1,outcome:'updated',state:'failed',searchable_at:at,consolidated_at:null,attempts:2,error:'Extractor temporarily unavailable'},
 ]};}
 async function fixture(t,{supported=true,mobile=false,manyRecords=false}={}){
-  const html=fs.readFileSync(path.resolve(__dirname,'../python/memory/src/scone_memory/api/playground.html'),'utf8').replaceAll('__SCONE_TOKEN__','jobs-fixture');
+  const html=fs.readFileSync(path.resolve(__dirname,'../dist/console.html'),'utf8').replaceAll('__SCONE_TOKEN__','jobs-fixture');
   const reads=[],writes=[];const state={fail:false,wrongSpace:false,hold:null};
   const jobs=Array.from({length:21},(_,i)=>job(21-i));
   if(manyRecords){jobs[0].items=Array.from({length:25},(_,i)=>({...jobs[0].items[1],index:i,episode_id:100+i}));jobs[0].searchable=25;jobs[0].consolidated=0;}

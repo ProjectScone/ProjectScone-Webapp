@@ -21,7 +21,7 @@ const report={evidence:'fixture',coverage:{events_considered:1320,earliest_retai
   ...['embed','vector','text'].map(name=>metric(`recall.latency_ms.${name}.p50`,.12,12,'ms')),
 ]};
 async function fixture(t,{mobile=false,data=report,error=false}={}){
-  const html=fs.readFileSync(process.env.SCONE_PLAYGROUND_HTML||path.resolve(__dirname,'../python/memory/src/scone_memory/api/playground.html'),'utf8').replaceAll('__SCONE_TOKEN__','analytics-fixture');
+  const html=fs.readFileSync(process.env.SCONE_PLAYGROUND_HTML||path.resolve(__dirname,'../dist/console.html'),'utf8').replaceAll('__SCONE_TOKEN__','analytics-fixture');
   const writes=[],errors=[];
   const server=http.createServer((req,res)=>{
     const url=new URL(req.url,'http://fixture');
