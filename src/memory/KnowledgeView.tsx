@@ -1,6 +1,7 @@
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import type {ApiClient} from '../api';
 import {KnowledgeExport} from './KnowledgeExport';
+import {KnowledgeReport} from './KnowledgeReport';
 import {KnowledgePath} from './KnowledgePath';
 import type {PathEntity} from './knowledge-path';
 import {KnowledgeCommunities,KnowledgeImportance} from './KnowledgeCommunities';
@@ -22,24 +23,27 @@ function CoverageNotice({value}:{value:Coverage}){
 export function KnowledgeView({api,detailsAvailable,statusAvailable,analysisAvailable,pathsAvailable,exportsAvailable}:{api:ApiClient;detailsAvailable:boolean;statusAvailable:boolean;analysisAvailable:boolean;pathsAvailable:boolean;exportsAvailable:boolean}){
  const [mode,setMode]=useState<KnowledgeMode>('current'),[attempt,setAttempt]=useState(0);
  const [showAnalysis,setShowAnalysis]=useState(false);
+ const [resolutionChoice,setResolutionChoice]=useState<{api:ApiClient;value:number}|null>(null);
+ const resolution=resolutionChoice?.api===api?resolutionChoice.value:1;
  const analysisEnabled=analysisAvailable&&showAnalysis;
- const request=useMemo(()=>({api,mode,attempt,statusAvailable,analysisEnabled}),[api,mode,attempt,statusAvailable,analysisEnabled]);
+ const request=useMemo(()=>({api,mode,attempt,statusAvailable,analysisEnabled,resolution}),[api,mode,attempt,statusAvailable,analysisEnabled,resolution]);
  const [snapshot,setSnapshot]=useState<{request:typeof request;result:Result<Knowledge>}|null>(null);
- const [selection,setSelection]=useState<{graph:Knowledge;id:string;reference?:PathEntity;factIds?:number[];fromPath?:boolean}|null>(null);
+ const [selection,setSelection]=useState<{graph:Knowledge;id:string;reference?:PathEntity;factIds?:number[];fromPath?:boolean;fromReport?:boolean}|null>(null);
  const clearPathInspection=useCallback(()=>setSelection(previous=>previous?.fromPath?null:previous),[]);
+ const clearReportInspection=useCallback(()=>setSelection(previous=>previous?.fromReport?null:previous),[]);
  const [query,setQuery]=useState('');
  const inspector=useRef<HTMLElement>(null);
  const [community,setCommunity]=useState<{graph:Knowledge;id:string}|null>(null);
  useEffect(()=>{
   const controller=new AbortController();
   const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(20000)]);
-  Promise.all([api.request<unknown>('/v1/graph/knowledge?'+new URLSearchParams({status:mode,limit:'150',attribute_limit:'1000',...(analysisEnabled?{groupings:'true'}:{})}),{signal,cache:'no-store'}),statusAvailable?api.request<unknown>('/v1/status',{signal,cache:'no-store'}).then(verifiedSpace):Promise.resolve(undefined)])
-   .then(([value,space])=>parseKnowledge(value,mode,space)).then(data=>{if(analysisEnabled&&!data.analysis)throw Error('The server did not return the requested community analysis.');if(!controller.signal.aborted)setSnapshot({request,result:{data}});})
+  Promise.all([api.request<unknown>('/v1/graph/knowledge?'+new URLSearchParams({status:mode,limit:'150',attribute_limit:'1000',...(analysisEnabled?{groupings:'true',resolution:String(resolution)}:{})}),{signal,cache:'no-store'}),statusAvailable?api.request<unknown>('/v1/status',{signal,cache:'no-store'}).then(verifiedSpace):Promise.resolve(undefined)])
+   .then(([value,space])=>parseKnowledge(value,mode,space)).then(data=>{if(analysisEnabled&&(!data.analysis||(data.analysis.resolution??1)!==resolution))throw Error('The server did not return the requested community analysis settings.');if(!controller.signal.aborted)setSnapshot({request,result:{data}});})
    .catch(error=>{if(!controller.signal.aborted)setSnapshot({request,result:{error:errorText(error)}});});
   return()=>controller.abort();
  },[request]);
  const result=snapshot?.request===request?snapshot.result:null,graph=result?.data;
- const selected=graph&&selection?.graph===graph&&(!selection.fromPath||(pathsAvailable&&detailsAvailable))?selection.id:null;
+ const selected=graph&&selection?.graph===graph&&(!selection.fromPath||(pathsAvailable&&detailsAvailable))&&(!selection.fromReport||(analysisAvailable&&detailsAvailable))?selection.id:null;
  const network=useMemo(()=>graph?knowledgeNetwork(graph):null,[graph]);
  const groups=useMemo(()=>graph?.analysis?analysisGroups(graph.analysis,graph.entities.map(entity=>entity.id)):undefined,[graph]);
  const communityId=graph&&community?.graph===graph?community.id:'';
@@ -53,18 +57,23 @@ export function KnowledgeView({api,detailsAvailable,statusAvailable,analysisAvai
   {!result?<p role="status">Reading this space’s knowledge…</p>:result.error?<div role="alert"><h2>Knowledge could not be loaded</h2><p>{result.error}</p><button className="btn quiet" onClick={()=>setAttempt(value=>value+1)}>Try again</button></div>:graph&&network&&map&&<>
    <CoverageNotice value={graph.coverage}/>
    {exportsAvailable&&<KnowledgeExport api={api} graph={graph}/>}
-   {graph.analysis&&groups&&<KnowledgeCommunities analysis={graph.analysis} groups={groups} selected={communityId} choose={id=>{setCommunity({graph,id});setSelection(null);}}/>}
+   {analysisAvailable&&<details className="knowledge-path"><summary>Explore a knowledge report</summary><KnowledgeReport api={api} graph={graph} clearInspection={clearReportInspection} inspect={detailsAvailable?(entity,factIds)=>{setCommunity(null);setSelection({graph,id:entity.id,reference:entity,factIds,fromReport:true});requestAnimationFrame(()=>{inspector.current?.focus({preventScroll:true});inspector.current?.scrollIntoView({block:'nearest'});});}:undefined}/></details>}
+   {graph.analysis&&groups&&<><KnowledgeCommunities analysis={graph.analysis} groups={groups} selected={communityId} choose={id=>{setCommunity({graph,id});setSelection(null);}}/>{graph.analysis.resolution!==null&&<MapResolution key={resolution} value={resolution} apply={value=>setResolutionChoice({api,value})}/>}</>}
    {pathsAvailable&&detailsAvailable&&<details className="knowledge-path"><summary>Find a connection</summary><KnowledgePath api={api} graph={graph} clearInspection={clearPathInspection} inspect={(entity,factIds)=>{setCommunity(null);setSelection({graph,id:entity.id,reference:entity,factIds,fromPath:true});requestAnimationFrame(()=>{inspector.current?.focus({preventScroll:true});inspector.current?.scrollIntoView({block:'nearest'});});}}/></details>}
    <div className="knowledge-summary"><strong>{graph.entities.length} entities</strong><span>{graph.relations.length} relationships</span><span>{graph.attributes.length} value{graph.attributes.length===1?'':'s'}</span><span>As of {new Date(graph.asOf).toLocaleString()}</span></div>
    {!graph.entities.length?<div className="knowledge-empty"><h2>No entities in this view</h2><p>Store and extract claims, or choose another claim view. {graph.coverage.truncated?'This read was limited, so absence is not conclusive.':''}</p></div>:<div className="knowledge-layout">
     <aside className="knowledge-directory" aria-label="Entity directory"><label>Find in this view<input type="search" value={query} onChange={event=>setQuery(event.target.value)} placeholder="Name or kind"/></label><p>{visible.length} of {graph.entities.length} entities</p><ul>{visible.map(entity=><li key={entity.id}><button type="button" aria-pressed={selected===entity.id} onClick={()=>choose(entity.id)}><strong>{entity.label}</strong><span>{entity.kind??'Unclassified'} · {entity.claims} claims</span></button></li>)}</ul>{!visible.length&&<p>No matching entities in the returned view.</p>}</aside>
     <div className="knowledge-map"><EvidenceNetworkCanvas nodes={map.nodes} edges={edges} groups={groups} groupColors={Boolean(groups)} selectedNode={selected} selectedEdge={null} selectNode={choose} selectEdge={id=>{const edge=edges.find(edge=>edge.id===id);if(edge)choose(edge.source);}} reset={()=>setSelection(null)}/>{edges.length<map.edges.length&&<p className="knowledge-map-limit">Map draws {edges.length} of {map.edges.length} relationships in this filter. Select an entity to inspect its recorded support.</p>}</div>
-    <aside ref={inspector} tabIndex={-1} className="knowledge-inspector" aria-label="Entity inspection">{selected?<EntityInspector key={selected} api={api} graph={graph} selected={selected} reference={selection?.reference} focusFacts={selection?.factIds} available={detailsAvailable} choose={choose}/>:<div className="knowledge-empty"><h2>Follow a connection</h2><p>Select an entity in the map or directory to inspect its relationships, values and supporting sources.</p></div>}</aside>
+    <aside ref={inspector} tabIndex={-1} className="knowledge-inspector" aria-label="Entity inspection">{selected?<EntityInspector key={selected} api={api} graph={graph} selected={selected} reference={selection?.reference} focusFacts={selection?.factIds} focusLabel={selection?.fromReport?'this connection':'this hop'} available={detailsAvailable} choose={choose}/>:<div className="knowledge-empty"><h2>Follow a connection</h2><p>Select an entity in the map or directory to inspect its relationships, values and supporting sources.</p></div>}</aside>
    </div>}
   </>}
  </section>;
 }
-function EntityInspector({api,graph,selected,reference,focusFacts,available,choose}:{api:ApiClient;graph:Knowledge;selected:string;reference?:PathEntity;focusFacts?:number[];available:boolean;choose:(id:string)=>void}){
+function MapResolution({value,apply}:{value:number;apply:(value:number)=>void}){
+ const [draft,setDraft]=useState(String(value)),number=Number(draft),valid=Number.isFinite(number)&&number>0&&number<=10;
+ return <form className="knowledge-resolution" onSubmit={event=>{event.preventDefault();if(valid)apply(number);}}><label>Map community resolution <input type="number" min="0" max="10" step="any" required value={draft} onChange={event=>setDraft(event.target.value)}/></label><button className="btn quiet" disabled={!valid||number===value}>Apply resolution</button><span>Higher resolution favors smaller groups.</span></form>;
+}
+function EntityInspector({api,graph,selected,reference,focusFacts,focusLabel,available,choose}:{api:ApiClient;graph:Knowledge;selected:string;reference?:PathEntity;focusFacts?:number[];focusLabel:string;available:boolean;choose:(id:string)=>void}){
  const [claimPage,setClaimPage]=useState(0);
  const [attempt,setAttempt]=useState(0),[snapshot,setSnapshot]=useState<{request:object;result:Result<EntityDetail>}|null>(null);
  const request=useMemo(()=>({api,graph,selected,attempt,focusFacts}),[api,graph,selected,attempt,focusFacts]);
@@ -92,7 +101,7 @@ function EntityInspector({api,graph,selected,reference,focusFacts,available,choo
    <h3>Connections</h3>{!detail.relations.length&&<p>No connections in this returned detail.</p>}
    {detail.relations.map((relation,index)=><div className="knowledge-connection" key={index}><span>{relation.direction==='outgoing'?'→':'←'} {relation.predicate.replaceAll('_',' ')}</span>{graph.entities.some(entity=>entity.id===relation.other.id)?<button type="button" onClick={()=>choose(relation.other.id)}>{relation.other.label}</button>:<strong>{relation.other.label} <small>(outside map)</small></strong>}<small>Claims {claimLabel(relation.factIds)}</small></div>)}
    <h3>Recorded values</h3>{!detail.attributes.length&&<p>No values in this returned detail.</p>}{detail.attributes.map((attribute,index)=><div className="knowledge-value" key={index}><strong>{attribute.predicate.replaceAll('_',' ')}</strong><p>{attribute.value}</p><small>Claims {claimLabel(attribute.factIds)}</small></div>)}
-   <h3>Supporting records</h3>{expected&&<p>Filtered to this hop’s {expected.size} supporting claims.{records.length<expected.size?` ${expected.size-records.length} were not returned by this inspection; the evidence shown is incomplete.`:''}</p>}<p>{records.length} returned records{records.length>50?` · showing ${claimPage*50+1}–${Math.min((claimPage+1)*50,records.length)}`:''}</p>{shownFacts.map(fact=><article className="knowledge-fact" key={fact.id}><strong>Claim {fact.id}</strong><p>{fact.subject} · {fact.predicate} · {fact.object}</p><small>{fact.status}{fact.excluded?' · excluded':''} · {fact.origin} · {fact.grounding.replaceAll('_',' ')}</small>{fact.quote&&<blockquote>{fact.quote}</blockquote>}{fact.sourceId&&source?.api===api&&source.discovery.state==='ready'&&source.discovery.space===graph.space&&fact.grounding!=='quote_source_mismatch'?<SourcePageLink api={api} episodeId={fact.sourceId}/>:<p className="muted">{fact.sourceId?'Source is not verified in the current space.':'No retained source for this claim.'}</p>}</article>)}{records.length>50&&<nav className="knowledge-record-pages" aria-label="Supporting record pages"><button className="btn quiet" disabled={claimPage===0} onClick={()=>setClaimPage(value=>value-1)}>Previous records</button><button className="btn quiet" disabled={(claimPage+1)*50>=records.length} onClick={()=>setClaimPage(value=>value+1)}>Next records</button></nav>}
+   <h3>Supporting records</h3>{expected&&<p>Filtered to {focusLabel}’s {expected.size} supporting claims.{records.length<expected.size?` ${expected.size-records.length} were not returned by this inspection; the evidence shown is incomplete.`:''}</p>}<p>{records.length} returned records{records.length>50?` · showing ${claimPage*50+1}–${Math.min((claimPage+1)*50,records.length)}`:''}</p>{shownFacts.map(fact=><article className="knowledge-fact" key={fact.id}><strong>Claim {fact.id}</strong><p>{fact.subject} · {fact.predicate} · {fact.object}</p><small>{fact.status}{fact.excluded?' · excluded':''} · {fact.origin} · {fact.grounding.replaceAll('_',' ')}</small>{fact.quote&&<blockquote>{fact.quote}</blockquote>}{fact.sourceId&&source?.api===api&&source.discovery.state==='ready'&&source.discovery.space===graph.space&&fact.grounding!=='quote_source_mismatch'?<SourcePageLink api={api} episodeId={fact.sourceId}/>:<p className="muted">{fact.sourceId?'Source is not verified in the current space.':'No retained source for this claim.'}</p>}</article>)}{records.length>50&&<nav className="knowledge-record-pages" aria-label="Supporting record pages"><button className="btn quiet" disabled={claimPage===0} onClick={()=>setClaimPage(value=>value-1)}>Previous records</button><button className="btn quiet" disabled={(claimPage+1)*50>=records.length} onClick={()=>setClaimPage(value=>value+1)}>Next records</button></nav>}
   </>}
  </>;
 }

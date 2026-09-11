@@ -1,7 +1,7 @@
 import type {EvidenceGroups} from './evidence-network.ts';
 export interface KnowledgeCommunity {id:string;label:string;members:string[];size:number}
 export interface KnowledgeImportance {entityId:string;communityId:string;degree:number;pagerank:number;betweenness:number;participation:number}
-export interface KnowledgeAnalysis {method:string;modularity:number;communities:KnowledgeCommunity[];membership:Map<string,string>;importance:Map<string,KnowledgeImportance>;total:number;analysed:number;isolated:number;truncated:boolean;reasons:string[];betweenness:string;estimated:boolean}
+export interface KnowledgeAnalysis {method:string;modularity:number;resolution:number|null;communities:KnowledgeCommunity[];membership:Map<string,string>;importance:Map<string,KnowledgeImportance>;total:number;analysed:number;isolated:number;truncated:boolean;reasons:string[];betweenness:string;estimated:boolean}
 const object=(v:unknown):Record<string,unknown>=>{if(!v||typeof v!=='object'||Array.isArray(v))throw Error('Invalid community analysis');return v as Record<string,unknown>;};
 const text=(v:unknown):string=>{if(typeof v!=='string'||!v||v.length>100000)throw Error('Invalid analysis text');return v;};
 const number=(v:unknown,min=0,max=1):number=>{if(typeof v!=='number'||!Number.isFinite(v)||v<min||v>max)throw Error('Invalid analysis score');return v;};
@@ -25,7 +25,8 @@ export function parseKnowledgeAnalysis(value:unknown,entities:Set<string>):Knowl
  if(!truncated&&reasons.length)throw Error('Inconsistent analysis coverage');
  const total=count(c.entities_total),analysed=count(c.entities_analysed),isolated=count(c.isolated_entities);
  if(analysed>total||membership.size>analysed)throw Error('Invalid analysis coverage');
- return {method:text(v.method),modularity:number(v.modularity,-1,1),communities,membership,importance,total,analysed,isolated,truncated,reasons,betweenness,estimated};
+ const resolution=c.resolution===undefined?null:number(c.resolution,Number.MIN_VALUE,10);
+ return {method:text(v.method),modularity:number(v.modularity,-(resolution??1),1),resolution,communities,membership,importance,total,analysed,isolated,truncated,reasons,betweenness,estimated};
 }
 export function analysisGroups(analysis:KnowledgeAnalysis,entities:string[]):EvidenceGroups {
  const missing=entities.filter(id=>!analysis.membership.has(id));

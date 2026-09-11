@@ -128,6 +128,18 @@ shows visible versus whole-community sizes, analysis limits, and whether bridge
 scores use sampling. Entity inspection adds degree, PageRank, bridge and
 participation scores. These measures describe graph structure, not claim
 reliability. Entities without returned analysis are labeled separately.
+When the server returns resolution metadata, the map can request any community
+resolution above zero through 10 and verifies the setting used in the response.
+
+Explore a knowledge report explicitly computes a report over the returned claim
+view, including entities outside the map. Reports show central and bridging
+entities, cross-community connections with claim IDs, suggested questions and
+paged communities. Resolution and optional degree-percentile hub exclusion
+(50–100) control the analysis; excluded hubs remain inspectable in a paged list.
+Entity inspection is independently gated and connection selections filter the
+supporting records. Reports retain sampling and partial-read disclosures and
+verify space, projection, time, settings and known entity identities. Changing
+settings, refreshing or cancelling discards old report results and inspection.
 
 With `graph.path` and `entities.read`, Find a connection searches entities across
 the space, including those outside the initial map. Choose exact endpoints and
