@@ -6,7 +6,7 @@ import {parseKnowledgePath,pathNetwork,type KnowledgePaths,type PathEntity,type 
 
 const message=(error:unknown)=>error instanceof Error?error.message:'Path search failed.';
 type Result<T>={data:T;error?:never}|{data?:never;error:string};
-function EntityPicker({api,graph,label,selected,choose}:{api:ApiClient;graph:Knowledge;label:string;selected:PathEntity|null;choose:(entity:PathEntity|null)=>void}){
+export function EntityPicker({api,graph,label,selected,choose}:{api:ApiClient;graph:Knowledge;label:string;selected:PathEntity|null;choose:(entity:PathEntity|null)=>void}){
  const [input,setInput]=useState({graph,text:''}),[attempt,setAttempt]=useState(0);
  const query=input.graph===graph?input.text:'';
  const request=useMemo(()=>({api,graph,query,attempt}),[api,graph,query,attempt]);

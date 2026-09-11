@@ -135,6 +135,18 @@ search can reach beyond it. Refresh, mode, community settings and connection
 changes restart paging and discard old selections. Servers without the paging
 capability retain the bounded first view.
 
+`graph.knowledge_seeds` independently enables Explore around entities. Choose up
+to 24 starting entities from the map or verified whole-space search, then read
+their neighborhood with an entity limit and hub degree cutoff. Connections are
+followed in both directions; high-degree hubs are shown but not expanded unless
+explicitly selected as starting entities. The response must preserve the
+requested seeds, cutoff, snapshot and known identities/support. Partial reads,
+entities outside the walk and skipped hubs remain explicit. The canvas draws at
+most 150 entities and 1,000 relationships; a directory pages through every
+returned entity in groups of 20 and can bring an off-map selection into view.
+Inspection reuses the main claim/source inspector. Draft changes, clearing and
+main graph changes discard obsolete results and neighborhood-owned inspection.
+
 Coverage notices retain backend read limits. The map draws at most 1,000 of the
 returned relationships and discloses that display limit; inspection retains up
 to the backend's 50,000 supporting claims, shown in pages of 50. Source links
