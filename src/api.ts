@@ -1,7 +1,9 @@
+import {exportAddress,readGraphExport,type GraphExportRequest,type GraphExportFile} from './memory/knowledge-export.ts';
 import {attachVoiceSocket,type VoiceEvents} from './conversations/voice/channel.ts';
 import {voiceSocketUrl} from './conversations/voice/wire.ts';
 
 export interface ApiClient {
+  graphExport(request:GraphExportRequest,signal?:AbortSignal):Promise<GraphExportFile>;
   request<T>(path: string, options?: RequestInit): Promise<T>;
   image(attachment: ImageAttachment, signal?: AbortSignal): Promise<Blob>;
   uploadImage(file: File, signal?: AbortSignal): Promise<ImageAttachment>;
@@ -21,6 +23,17 @@ export class ApiError extends Error {
 
 export function createApiClient(key: string, unauthorized: () => void, base = ''): ApiClient {
   return {
+    async graphExport(request,signal){
+      const path=exportAddress(request),active=signal?AbortSignal.any([signal,AbortSignal.timeout(60000)]):AbortSignal.timeout(60000);
+      active.throwIfAborted();
+      const response=await fetch(base+path,{method:'GET',headers:{Authorization:'Bearer '+key},signal:active,cache:'no-store',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer'});
+      if(!response.ok){
+        await response.body?.cancel();
+        if(response.status===401)unauthorized();
+        throw new ApiError(response.status,`Export request failed (${response.status}).`);
+      }
+      return readGraphExport(response,request,active);
+    },
     voiceConnection(sid,format,events,signal){
       signal.throwIfAborted();
       const url=voiceSocketUrl(sid,base||window.location.origin);

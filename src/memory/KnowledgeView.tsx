@@ -1,5 +1,6 @@
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import type {ApiClient} from '../api';
+import {KnowledgeExport} from './KnowledgeExport';
 import {KnowledgePath} from './KnowledgePath';
 import type {PathEntity} from './knowledge-path';
 import {KnowledgeCommunities,KnowledgeImportance} from './KnowledgeCommunities';
@@ -18,7 +19,7 @@ const errorText=(error:unknown)=>error instanceof Error?error.message:'The knowl
 function CoverageNotice({value}:{value:Coverage}){
  return <div className="knowledge-coverage" role="status"><strong>{value.truncated?'Partial view':'Returned view'}</strong><span>{value.counts.facts_read??0} ledger claims read{value.counts.facts_counted!==undefined?` · ${value.counts.facts_counted} match this view`:''}</span>{value.reasons.length>0&&<span>{value.reasons.map(reason=>reason.replaceAll('_',' ')).join(' · ')}</span>}</div>;
 }
-export function KnowledgeView({api,detailsAvailable,statusAvailable,analysisAvailable,pathsAvailable}:{api:ApiClient;detailsAvailable:boolean;statusAvailable:boolean;analysisAvailable:boolean;pathsAvailable:boolean}){
+export function KnowledgeView({api,detailsAvailable,statusAvailable,analysisAvailable,pathsAvailable,exportsAvailable}:{api:ApiClient;detailsAvailable:boolean;statusAvailable:boolean;analysisAvailable:boolean;pathsAvailable:boolean;exportsAvailable:boolean}){
  const [mode,setMode]=useState<KnowledgeMode>('current'),[attempt,setAttempt]=useState(0);
  const [showAnalysis,setShowAnalysis]=useState(false);
  const analysisEnabled=analysisAvailable&&showAnalysis;
@@ -51,6 +52,7 @@ export function KnowledgeView({api,detailsAvailable,statusAvailable,analysisAvai
   <div className="knowledge-toolbar"><label>Claims <select value={mode} onChange={event=>setMode(event.target.value as KnowledgeMode)}>{KNOWLEDGE_MODES.map(value=><option key={value} value={value}>{value==='current'?'Current':value==='history'?'History':value==='proposed'?'Awaiting review':'Include excluded'}</option>)}</select></label><button className="btn quiet" onClick={()=>setAttempt(value=>value+1)}>Refresh graph</button>{analysisAvailable&&<label><input type="checkbox" checked={showAnalysis} onChange={event=>setShowAnalysis(event.target.checked)}/>Show communities</label>}<span>Relationships come from recorded claims.</span></div>
   {!result?<p role="status">Reading this space’s knowledge…</p>:result.error?<div role="alert"><h2>Knowledge could not be loaded</h2><p>{result.error}</p><button className="btn quiet" onClick={()=>setAttempt(value=>value+1)}>Try again</button></div>:graph&&network&&map&&<>
    <CoverageNotice value={graph.coverage}/>
+   {exportsAvailable&&<KnowledgeExport api={api} graph={graph}/>}
    {graph.analysis&&groups&&<KnowledgeCommunities analysis={graph.analysis} groups={groups} selected={communityId} choose={id=>{setCommunity({graph,id});setSelection(null);}}/>}
    {pathsAvailable&&detailsAvailable&&<details className="knowledge-path"><summary>Find a connection</summary><KnowledgePath api={api} graph={graph} clearInspection={clearPathInspection} inspect={(entity,factIds)=>{setCommunity(null);setSelection({graph,id:entity.id,reference:entity,factIds,fromPath:true});requestAnimationFrame(()=>{inspector.current?.focus({preventScroll:true});inspector.current?.scrollIntoView({block:'nearest'});});}}/></details>}
    <div className="knowledge-summary"><strong>{graph.entities.length} entities</strong><span>{graph.relations.length} relationships</span><span>{graph.attributes.length} value{graph.attributes.length===1?'':'s'}</span><span>As of {new Date(graph.asOf).toLocaleString()}</span></div>

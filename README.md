@@ -139,9 +139,18 @@ time. Changing endpoints or limits discards stale route results. Partial reads,
 excluded intermediate hubs and route limits remain visible; a limited search
 cannot establish that no connection exists.
 
-This is a recorded-knowledge view, separate from query evidence. Export controls
-and broader graph editing remain follow-up work. Availability follows each native
-server's capabilities.
+With `graph.export`, Export knowledge prepares authenticated JSON, GraphML,
+Cypher, CSV ZIP, JSON-LD or Obsidian ZIP files. Exports cover the selected claim
+view across the space; map search, community selection and drawing caps do not
+narrow their contents. The browser verifies space, projection digest/revision,
+status, timestamp, media type and truncation headers before offering a file.
+Decoded bytes are bounded to 100 MiB. Redirects are rejected; cancellation,
+refresh, format and connection changes revoke pending or ready downloads.
+Partial-export metadata stays in the native file and is disclosed in the UI.
+
+This is a recorded-knowledge view, separate from query evidence. Broader graph
+editing and the remaining reference capabilities are still follow-up work.
+Availability follows each native server's capabilities.
 
 ### Three-dimensional evidence map
 
