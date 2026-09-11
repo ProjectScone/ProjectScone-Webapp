@@ -126,6 +126,15 @@ an entity directory, an interactive map, and current, history, proposed and
 excluded-inclusive views. `entities.read` independently enables inspection of
 incoming/outgoing relationships, literal values and supporting claims.
 
+`graph.knowledge_paging` adds next/previous navigation through the entity
+ranking, with at most 150 entities on each page. Pages share the first read's
+instant, projection identity and revision; changed snapshots, repeated entities,
+cursor loops and incomplete page contracts are rejected. The map shows only
+relationships between entities on its current page. Inspection and connection
+search can reach beyond it. Refresh, mode, community settings and connection
+changes restart paging and discard old selections. Servers without the paging
+capability retain the bounded first view.
+
 Coverage notices retain backend read limits. The map draws at most 1,000 of the
 returned relationships and discloses that display limit; inspection retains up
 to the backend's 50,000 supporting claims, shown in pages of 50. Source links

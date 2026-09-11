@@ -4,6 +4,7 @@ import {KnowledgeExport} from './KnowledgeExport';
 import {KnowledgeReport} from './KnowledgeReport';
 import {KnowledgeTimeline} from './KnowledgeTimeline';
 import {KnowledgePath} from './KnowledgePath';
+import {moveKnowledgePage,parseKnowledgePage,type KnowledgePage,type KnowledgeTrail} from './knowledge-paging';
 import type {PathEntity} from './knowledge-path';
 import {KnowledgeCommunities,KnowledgeImportance} from './KnowledgeCommunities';
 import {analysisGroups} from './knowledge-analysis';
@@ -11,7 +12,7 @@ import {EvidenceNetworkCanvas} from './EvidenceNetworkCanvas';
 import {verifiedSpace} from './source-address';
 import {SourcePageLink} from './SourcePageLink';
 import {useSourceNavigation} from './SourceNavigation';
-import {KNOWLEDGE_MODES,knowledgeNetwork,parseEntityDetail,parseKnowledge,type Coverage,type EntityDetail,type Knowledge,type KnowledgeMode} from './knowledge';
+import {KNOWLEDGE_MODES,knowledgeNetwork,parseEntityDetail,type Coverage,type EntityDetail,type Knowledge,type KnowledgeMode} from './knowledge';
 import './query-evidence.css';
 import './knowledge.css';
 
@@ -21,14 +22,17 @@ const errorText=(error:unknown)=>error instanceof Error?error.message:'The knowl
 function CoverageNotice({value}:{value:Coverage}){
  return <div className="knowledge-coverage" role="status"><strong>{value.truncated?'Partial view':'Returned view'}</strong><span>{value.counts.facts_read??0} ledger claims read{value.counts.facts_counted!==undefined?` · ${value.counts.facts_counted} match this view`:''}</span>{value.reasons.length>0&&<span>{value.reasons.map(reason=>reason.replaceAll('_',' ')).join(' · ')}</span>}</div>;
 }
-export function KnowledgeView({api,detailsAvailable,statusAvailable,analysisAvailable,pathsAvailable,exportsAvailable,timelineAvailable}:{api:ApiClient;detailsAvailable:boolean;statusAvailable:boolean;analysisAvailable:boolean;pathsAvailable:boolean;exportsAvailable:boolean;timelineAvailable:boolean}){
+export function KnowledgeView({api,detailsAvailable,statusAvailable,analysisAvailable,pathsAvailable,exportsAvailable,timelineAvailable,pagingAvailable}:{api:ApiClient;detailsAvailable:boolean;statusAvailable:boolean;analysisAvailable:boolean;pathsAvailable:boolean;exportsAvailable:boolean;timelineAvailable:boolean;pagingAvailable:boolean}){
  const [mode,setMode]=useState<KnowledgeMode>('current'),[attempt,setAttempt]=useState(0);
  const [showAnalysis,setShowAnalysis]=useState(false);
  const [resolutionChoice,setResolutionChoice]=useState<{api:ApiClient;value:number}|null>(null);
  const resolution=resolutionChoice?.api===api?resolutionChoice.value:1;
  const analysisEnabled=analysisAvailable&&showAnalysis;
- const request=useMemo(()=>({api,mode,attempt,statusAvailable,analysisEnabled,resolution}),[api,mode,attempt,statusAvailable,analysisEnabled,resolution]);
- const [snapshot,setSnapshot]=useState<{request:typeof request;result:Result<Knowledge>}|null>(null);
+ const context=useMemo(()=>({api,mode,attempt,statusAvailable,analysisEnabled,resolution,pagingAvailable}),[api,mode,attempt,statusAvailable,analysisEnabled,resolution,pagingAvailable]);
+ const [navigation,setNavigation]=useState<{context:object;trail:KnowledgeTrail}|null>(null);
+ const trail=navigation?.context===context?navigation.trail:null;
+ const request=useMemo(()=>({context,trail}),[context,trail]);
+ const [snapshot,setSnapshot]=useState<{request:typeof request;result:Result<KnowledgePage>}|null>(null);
  const [selection,setSelection]=useState<{graph:Knowledge;id:string;reference?:PathEntity;factIds?:number[];fromPath?:boolean;fromReport?:boolean}|null>(null);
  const clearPathInspection=useCallback(()=>setSelection(previous=>previous?.fromPath?null:previous),[]);
  const clearReportInspection=useCallback(()=>setSelection(previous=>previous?.fromReport?null:previous),[]);
@@ -38,12 +42,15 @@ export function KnowledgeView({api,detailsAvailable,statusAvailable,analysisAvai
  useEffect(()=>{
   const controller=new AbortController();
   const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(20000)]);
-  Promise.all([api.request<unknown>('/v1/graph/knowledge?'+new URLSearchParams({status:mode,limit:'150',attribute_limit:'1000',...(analysisEnabled?{groupings:'true',resolution:String(resolution)}:{})}),{signal,cache:'no-store'}),statusAvailable?api.request<unknown>('/v1/status',{signal,cache:'no-store'}).then(verifiedSpace):Promise.resolve(undefined)])
-   .then(([value,space])=>parseKnowledge(value,mode,space)).then(data=>{if(analysisEnabled&&(!data.analysis||(data.analysis.resolution??1)!==resolution))throw Error('The server did not return the requested community analysis settings.');if(!controller.signal.aborted)setSnapshot({request,result:{data}});})
+  const params=new URLSearchParams({status:mode,limit:'150',attribute_limit:'1000',...(analysisEnabled?{groupings:'true',resolution:String(resolution)}:{})});
+  if(trail){params.set('as_of',trail.anchor.asOf);const cursor=trail.pages[trail.index].cursor;if(cursor)params.set('cursor',cursor);}
+  Promise.all([api.request<unknown>('/v1/graph/knowledge?'+params,{signal,cache:'no-store'}),statusAvailable?api.request<unknown>('/v1/status',{signal,cache:'no-store'}).then(verifiedSpace):Promise.resolve(undefined)])
+   .then(([value,space])=>parseKnowledgePage(value,mode,space,trail,pagingAvailable)).then(data=>{if(analysisEnabled&&(!data.graph.analysis||(data.graph.analysis.resolution??1)!==resolution))throw Error('The server did not return the requested community analysis settings.');if(!controller.signal.aborted)setSnapshot({request,result:{data}});})
    .catch(error=>{if(!controller.signal.aborted)setSnapshot({request,result:{error:errorText(error)}});});
   return()=>controller.abort();
  },[request]);
- const result=snapshot?.request===request?snapshot.result:null,graph=result?.data;
+ const result=snapshot?.request===request?snapshot.result:null,page=result?.data,graph=page?.graph;
+ const changePage=(direction:-1|1)=>{if(page&&pagingAvailable){setSelection(null);setCommunity(null);setQuery('');setNavigation({context,trail:moveKnowledgePage(trail,page,direction)});}};
  const selected=graph&&selection?.graph===graph&&(!selection.fromPath||(pathsAvailable&&detailsAvailable))&&(!selection.fromReport||(analysisAvailable&&detailsAvailable))?selection.id:null;
  const network=useMemo(()=>graph?knowledgeNetwork(graph):null,[graph]);
  const groups=useMemo(()=>graph?.analysis?analysisGroups(graph.analysis,graph.entities.map(entity=>entity.id)):undefined,[graph]);
@@ -57,6 +64,7 @@ export function KnowledgeView({api,detailsAvailable,statusAvailable,analysisAvai
   <div className="knowledge-toolbar"><label>Claims <select value={mode} onChange={event=>setMode(event.target.value as KnowledgeMode)}>{KNOWLEDGE_MODES.map(value=><option key={value} value={value}>{value==='current'?'Current':value==='history'?'History':value==='proposed'?'Awaiting review':'Include excluded'}</option>)}</select></label><button className="btn quiet" onClick={()=>setAttempt(value=>value+1)}>Refresh graph</button>{analysisAvailable&&<label><input type="checkbox" checked={showAnalysis} onChange={event=>setShowAnalysis(event.target.checked)}/>Show communities</label>}<span>Relationships come from recorded claims.</span></div>
   {!result?<p role="status">Reading this space’s knowledge…</p>:result.error?<div role="alert"><h2>Knowledge could not be loaded</h2><p>{result.error}</p><button className="btn quiet" onClick={()=>setAttempt(value=>value+1)}>Try again</button></div>:graph&&network&&map&&<>
    <CoverageNotice value={graph.coverage}/>
+   {pagingAvailable&&page&&<nav className="knowledge-page-navigation" aria-label="Knowledge graph pages"><button className="btn quiet" disabled={!trail?.index} onClick={()=>changePage(-1)}>Previous entities</button><span>Page {(trail?.index??0)+1} · {graph.entities.length?`${(trail?.index??0)*150+1}–${(trail?.index??0)*150+graph.entities.length}`:'0'} of {graph.coverage.counts.entities_total} entities in the read</span><button className="btn quiet" disabled={!page.nextCursor} onClick={()=>changePage(1)}>Next entities</button><p>Each page shows relationships between its displayed entities. Entity inspection and connection search can follow evidence beyond this page.</p></nav>}
    {exportsAvailable&&<KnowledgeExport api={api} graph={graph}/>}
    {analysisAvailable&&<details className="knowledge-path"><summary>Explore a knowledge report</summary><KnowledgeReport api={api} graph={graph} clearInspection={clearReportInspection} inspect={detailsAvailable?(entity,factIds)=>{setCommunity(null);setSelection({graph,id:entity.id,reference:entity,factIds,fromReport:true});requestAnimationFrame(()=>{inspector.current?.focus({preventScroll:true});inspector.current?.scrollIntoView({block:'nearest'});});}:undefined}/></details>}
    {graph.analysis&&groups&&<><KnowledgeCommunities analysis={graph.analysis} groups={groups} selected={communityId} choose={id=>{setCommunity({graph,id});setSelection(null);}}/>{graph.analysis.resolution!==null&&<MapResolution key={resolution} value={resolution} apply={value=>setResolutionChoice({api,value})}/>}</>}
