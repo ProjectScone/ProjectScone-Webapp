@@ -69,7 +69,7 @@ export function SourcePage({api,enabled}:{api:ApiClient;enabled:boolean}){
         <p className="source-page-note">The retained original, not an approved claim. Links require access to this memory space; they do not share your key. Text is not an original-file download.</p>
         <section className="source-page-original" aria-label="Source original"><SourceContent text={current.original.content}/>{current.original.content===''&&<p>No retained text.</p>}</section>
         {current.documents&&current.original.documentIssue&&<p role="alert">Document attachments could not be verified for this source.</p>}
-        {current.documents&&documentSource&&<SourceDocumentEvidence key={`${space}:${episodeId}`} api={api} source={documentSource} episodeId={address.episodeId}/>}
+        {current.documents&&documentSource&&<SourceDocumentEvidence key={`document:${space}:${episodeId}`} api={api} source={documentSource} episodeId={address.episodeId}/>}
         {current.provenance&&provenanceSource&&<SourceProvenance api={api} source={provenanceSource}/>}
         {current.attachments&&<SourceImages api={api} episodeId={address.episodeId}/>}<SourceImageUnderstanding key={`${address.space}:${address.episodeId}`} api={api} episodeId={address.episodeId} space={address.space} images={current.original.images} available={current.understand===true} canSetup={current.models===true}/><footer><span>Episode #{episodeId} · {space}</span><button className="btn quiet small" onClick={retry}>Refresh source</button></footer>
       </article>}
