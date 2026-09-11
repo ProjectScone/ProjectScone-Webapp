@@ -11,6 +11,7 @@ export function SourceDocumentEvidence({api,source,episodeId}:{api:ApiClient;sou
  const result=enabled&&snapshot?.request===request?snapshot:null,data=result?.data;
  const current=data&&view?.data===data?view:{table:0,page:0,notes:0,selected:null,mergedPage:0};
  const table=data?.tables[current.table],selected=current.selected?data?.cells.get(current.selected):undefined;
+ const selectedSegment=selected&&data?data.segments[selected.segment]:null;
  const detail=useRef<HTMLElement>(null),excerpt=selected&&data?cellExcerpt(selected,data):null;
  useEffect(()=>{
   if(!enabled)return;
@@ -35,6 +36,9 @@ export function SourceDocumentEvidence({api,source,episodeId}:{api:ApiClient;sou
     <p>{selected.tableLocator} · {selected.locator}</p><p>Spans {selected.rowSpan} row{selected.rowSpan===1?'':'s'} × {selected.columnSpan} column{selected.columnSpan===1?'':'s'}.</p>
     <p>Source segment: {data.segments[selected.segment].locator}{data.segments[selected.segment].member?` · ${data.segments[selected.segment].member}`:''}</p>
     {data.segments[selected.segment].headerBasis&&<p>Header basis: {data.segments[selected.segment].headerBasis.replaceAll('_',' ')}</p>}
+    {selectedSegment?.tableName&&<p>Declared table: {selectedSegment.tableName}{selectedSegment.tableRange?` · ${selectedSegment.tableRange}`:''}</p>}
+    {selectedSegment?.tableRole&&<p>Table role: {selectedSegment.tableRole==='totals'?'Totals row':selectedSegment.tableRole}</p>}
+    {selectedSegment?.cachedFormula&&<p>Value from the formula’s stored result. Recalculation is not performed during ingestion.</p>}
     <p>Retained text bytes {selected.start}–{selected.end} (UTF-8, end exclusive).</p>
     <pre aria-label="Cell in retained text">{excerpt.clippedBefore?'…':''}{excerpt.before}<mark>{preview(excerpt.value,8000)||'(empty cell)'}</mark>{excerpt.after}{excerpt.clippedAfter?'…':''}</pre>
     {selected.text.length>8000&&<details><summary>Read complete cell value ({selected.text.length} characters)</summary><pre>{selected.text}</pre></details>}

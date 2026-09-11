@@ -57,3 +57,8 @@ test('multiple fallback segments may share the same source line locator',()=>{
  const f=fixture();for(const s of f.response.segments){s.locator='line:1';s.table_cells=[];s.metadata={table_status:'text_fallback'};}
  assert.equal(parseDocumentEvidence(f.response,f.source).segments.length,2);
 });
+test('spreadsheet table ranges, totals and cached formula provenance remain inspectable',()=>{
+ const f=fixture();Object.assign(f.response.segments[1].metadata,{table_range:'B4:C6',table_name:'RevenueTable',table_role:'totals',formula:'cached-value'});
+ const segment=parseDocumentEvidence(f.response,f.source).segments[1];
+ assert.equal(segment.tableRange,'B4:C6');assert.equal(segment.tableName,'RevenueTable');assert.equal(segment.tableRole,'totals');assert.equal(segment.cachedFormula,true);
+});

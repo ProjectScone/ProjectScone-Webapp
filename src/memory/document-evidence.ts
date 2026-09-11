@@ -7,7 +7,7 @@ export interface DocumentCell {
  isHeader:boolean;text:string;start:number;end:number;segment:number;
  headers:CellReference[];context:CellReference[];mergedLocators:string[];
 }
-export interface EvidenceSegment {locator:string;text:string;start:number;member:string;headerBasis:string}
+export interface EvidenceSegment {locator:string;text:string;start:number;member:string;headerBasis:string;tableName:string;tableRange:string;tableRole:string;cachedFormula:boolean}
 export interface DocumentEvidence {
  filename:string;format:string;parser:string;segments:EvidenceSegment[];cells:Map<string,DocumentCell>;
  tables:{locator:string;cells:DocumentCell[]}[];notes:{locator:string;status:string;reason:string}[];
@@ -42,7 +42,8 @@ export function parseDocumentEvidence(value:unknown,source:DocumentSource):Docum
   const s=record(value),content=text(s.text,2000000),locator=text(s.locator),metadata=s.metadata===undefined?{}:record(s.metadata),encoded=encoder.encode(content);
   if(offset+encoded.length>2000000)throw Error('Document text exceeds its byte limit');
   const member=metadata.member===undefined?'':text(metadata.member),headerBasis=metadata.header_basis===undefined?'':text(metadata.header_basis);
-  const segment=segments.length;segments.push({locator,text:content,start:offset,member,headerBasis});
+  const optionalText=(key:string)=>metadata[key]===undefined?'':text(metadata[key]);
+  const segment=segments.length;segments.push({locator,text:content,start:offset,member,headerBasis,tableName:optionalText('table_name'),tableRange:optionalText('table_range'),tableRole:optionalText('table_role'),cachedFormula:metadata.formula==='cached-value'});
   if(metadata.table_notes!==undefined||metadata.table_status==='text_fallback')notes.push({locator,status:metadata.table_status===undefined?'':text(metadata.table_status),reason:metadata.table_notes===undefined?'Structure unavailable':text(metadata.table_notes)});
   let previous=0;
   for(const value of list(s.table_cells??[],20000)){
