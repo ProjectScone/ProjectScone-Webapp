@@ -17,7 +17,7 @@ const list=(v:unknown,max=5000):unknown[]=>{if(!Array.isArray(v)||v.length>max)t
 const ids=(v:unknown):number[]=>list(v,50000).map(value=>{const id=num(value);if(!id)throw Error('Invalid claim identity');return id;});
 const id=(v:unknown,prefix='ent:'):string=>{const value=str(v);if(!value.startsWith(prefix)||value.length>200||value.length===prefix.length)throw Error('Invalid graph identity');return value;};
 function entity(value:unknown):Entity {const v=record(value);return {id:id(v.id),key:str(v.key),label:str(v.label),kind:v.kind===null?null:str(v.kind),kindStatus:str(v.kind_status),claims:num(v.claims)};}
-function coverage(value:unknown):Coverage {
+export function parseKnowledgeCoverage(value:unknown):Coverage {
  const v=record(value),counts:Record<string,number>={};
  for(const key of ['facts_read','facts_counted','facts_limit','entities_total','entities_shown','relations_total','relations_shown','attributes_total','attributes_shown'])if(v[key]!==undefined&&v[key]!==null)counts[key]=num(v[key]);
  const truncated=bool(v.truncated),reasons=list(v.reasons,50).map(str);
@@ -40,7 +40,7 @@ export function parseKnowledge(value:unknown,mode:KnowledgeMode,expectedSpace?:s
  unique(relations.map(r=>r.id));
  const attributes=list(v.attributes).map(value=>attribute(value));
  if(relations.some(r=>!known.has(r.source)||!known.has(r.target))||attributes.some(a=>!known.has(a.entityId)))throw Error('Knowledge contains a missing entity reference');
- const c=coverage(v.coverage);
+ const c=parseKnowledgeCoverage(v.coverage);
  for(const [key,actual] of [['entities',entities.length],['relations',relations.length],['attributes',attributes.length]] as const){if(num(c.counts[key+'_shown'])!==actual||num(c.counts[key+'_total'])<actual)throw Error('Knowledge coverage does not match returned records');}
  if(!Number.isFinite(Date.parse(str(filters.as_of))))throw Error('Invalid knowledge timestamp');
  return {space,identity:projection.key,revision:projection.revision,mode,asOf:str(filters.as_of),entities,relations,attributes,coverage:c,analysis:v.groupings==null?null:parseKnowledgeAnalysis(v.groupings,known)};
@@ -57,5 +57,18 @@ export function parseEntityDetail(value:unknown,graph:Knowledge,selected:string)
  const supported=new Set([...relations.flatMap(r=>r.factIds),...attributes.flatMap(a=>a.factIds)]);
  const facts=list(v.facts,50000).map(value=>{const f=record(value),factId=num(f.fact_id);if(!factId||!supported.has(factId))throw Error('Unexpected supporting claim');return {id:factId,subject:str(f.subject),predicate:str(f.predicate),object:str(f.object),status:str(f.status),excluded:bool(f.excluded),origin:str(f.origin),sourceId:f.source_episode_id===null?null:num(f.source_episode_id),quote:f.quote===null?null:str(f.quote),grounding:str(f.grounding)};});
  unique(facts.map(f=>String(f.id)));
- return {entity:selectedEntity,relations,attributes,facts,consistent:bool(v.consistent),complete:bool(v.complete),coverage:coverage(v.coverage)};
+ return {entity:selectedEntity,relations,attributes,facts,consistent:bool(v.consistent),complete:bool(v.complete),coverage:parseKnowledgeCoverage(v.coverage)};
+}
+
+export function knowledgeResponse(value:unknown,graph:Knowledge):Record<string,unknown> {
+ const v=record(value),filters=record(v.filters),projection=identity(v.projection);
+ if(v.schema_version!==1||v.space!==graph.space||filters.status!==graph.mode||filters.as_of!==graph.asOf||projection.key!==graph.identity||projection.revision!==graph.revision)throw Error('Knowledge changed while reading. Refresh the graph to load its current evidence.');
+ return v;
+}
+export function parseEntitySearch(value:unknown,graph:Knowledge,query:string):{entities:Entity[];coverage:Coverage} {
+ const v=knowledgeResponse(value,graph);
+ if(record(v.filters).q!==query)throw Error('Entity search response belongs to another query');
+ const entities=list(v.entities,20).map(entity),coverage=parseKnowledgeCoverage(v.coverage);unique(entities.map(entity=>entity.id));
+ if(coverage.counts.entities_shown!==entities.length||num(coverage.counts.entities_total)<entities.length)throw Error('Entity search counts disagree');
+ return {entities,coverage};
 }

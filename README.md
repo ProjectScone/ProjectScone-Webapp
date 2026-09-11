@@ -129,9 +129,19 @@ scores use sampling. Entity inspection adds degree, PageRank, bridge and
 participation scores. These measures describe graph structure, not claim
 reliability. Entities without returned analysis are labeled separately.
 
-This is a recorded-knowledge view, separate from query evidence. Path finding,
-export controls and broader graph editing remain follow-up work. Availability
-follows each native server's capabilities.
+With `graph.path` and `entities.read`, Find a connection searches entities across
+the space, including those outside the initial map. Choose exact endpoints and
+hop, route and hub limits to inspect shortest routes from the backend. Each hop
+preserves the recorded relationship's direction and exposes its supporting
+claims; inspection filters records to that hop and can open retained sources.
+Path/search responses must match the displayed space, projection revision and
+time. Changing endpoints or limits discards stale route results. Partial reads,
+excluded intermediate hubs and route limits remain visible; a limited search
+cannot establish that no connection exists.
+
+This is a recorded-knowledge view, separate from query evidence. Export controls
+and broader graph editing remain follow-up work. Availability follows each native
+server's capabilities.
 
 ### Three-dimensional evidence map
 
