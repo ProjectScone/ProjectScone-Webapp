@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { createApiClient, ApiError } from '../src/api.ts';
 import { createHash } from 'node:crypto';
 
-for(const operation of ['request','upload','image','stream','export'] as const)test(`a ${operation} permission denial preserves credentials but an invalid key expires them`,async()=>{
+for(const operation of ['request','upload','document','image','stream','export'] as const)test(`a ${operation} permission denial preserves credentials but an invalid key expires them`,async()=>{
   let status=403,expired=0;
   const server=createServer((req,res)=>{
     assert.equal(req.headers.authorization,'Bearer reader');
@@ -17,6 +17,7 @@ for(const operation of ['request','upload','image','stream','export'] as const)t
   const client=createApiClient('reader',()=>{expired++;},`http://127.0.0.1:${address.port}`);
   const attempt=()=>operation==='request'?client.request('/v1/episodes',{method:'POST',body:'{"content":"denied"}'}):
     operation==='upload'?client.uploadImage(new File(['opaque fixture'],'test.png',{type:'image/png'})):
+    operation==='document'?client.uploadDocument(new File(['document fixture'],'test.csv')):
     operation==='image'?client.image({attachment_id:'a'.repeat(64),media_type:'image/png',bytes:1}):
     operation==='export'?client.graphExport({format:'json',space:'alpha',status:'current',asOf:'2026-09-11T12:00:00Z',digest:'a'.repeat(64),revision:1}):
     client.conversationStream('session','turn',0,new AbortController().signal);
