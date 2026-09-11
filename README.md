@@ -121,9 +121,17 @@ to the backend's 50,000 supporting claims, shown in pages of 50. Source links
 require the currently verified space. Inspection rejects a changed graph
 revision, and changing connection, mode or refreshing revokes old selections.
 
-This is a recorded-knowledge view, separate from query evidence. Computed
-communities, path finding, export controls and broader graph editing remain
-follow-up work. Availability follows each native server's capabilities.
+When `graph.report` is available, Show communities requests the backend's
+computed analysis. Community colors and filters retain stable group identities;
+the directory and map show only the selected group's returned members. The UI
+shows visible versus whole-community sizes, analysis limits, and whether bridge
+scores use sampling. Entity inspection adds degree, PageRank, bridge and
+participation scores. These measures describe graph structure, not claim
+reliability. Entities without returned analysis are labeled separately.
+
+This is a recorded-knowledge view, separate from query evidence. Path finding,
+export controls and broader graph editing remain follow-up work. Availability
+follows each native server's capabilities.
 
 ### Three-dimensional evidence map
 

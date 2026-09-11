@@ -1,3 +1,4 @@
+import {parseKnowledgeAnalysis,type KnowledgeAnalysis} from './knowledge-analysis.ts';
 import type {QueryEvidenceNode,QueryEvidenceEdge} from './query-evidence.ts';
 export const KNOWLEDGE_MODES=['current','history','proposed','all'] as const;
 export type KnowledgeMode=typeof KNOWLEDGE_MODES[number];
@@ -5,7 +6,7 @@ export interface Entity {id:string;key:string;label:string;kind:string|null;kind
 export interface Coverage {truncated:boolean;reasons:string[];counts:Record<string,number>}
 export interface Relation {id:string;source:string;target:string;predicate:string;factIds:number[];support:Record<string,number>}
 export interface Attribute {predicate:string;value:string;factIds:number[];entityId:string}
-export interface Knowledge {space:string;identity:string;revision:number;mode:KnowledgeMode;asOf:string;entities:Entity[];relations:Relation[];attributes:Attribute[];coverage:Coverage}
+export interface Knowledge {space:string;identity:string;revision:number;mode:KnowledgeMode;asOf:string;entities:Entity[];relations:Relation[];attributes:Attribute[];coverage:Coverage;analysis:KnowledgeAnalysis|null}
 export interface DetailFact {id:number;subject:string;predicate:string;object:string;status:string;excluded:boolean;origin:string;sourceId:number|null;quote:string|null;grounding:string}
 export interface EntityDetail {entity:Entity;facts:DetailFact[];consistent:boolean;complete:boolean;coverage:Coverage;relations:{predicate:string;direction:'incoming'|'outgoing';other:{id:string;label:string};factIds:number[]}[];attributes:Attribute[]}
 const record=(v:unknown):Record<string,unknown>=>{if(!v||typeof v!=='object'||Array.isArray(v))throw Error('Invalid knowledge record');return v as Record<string,unknown>;};
@@ -42,7 +43,7 @@ export function parseKnowledge(value:unknown,mode:KnowledgeMode,expectedSpace?:s
  const c=coverage(v.coverage);
  for(const [key,actual] of [['entities',entities.length],['relations',relations.length],['attributes',attributes.length]] as const){if(num(c.counts[key+'_shown'])!==actual||num(c.counts[key+'_total'])<actual)throw Error('Knowledge coverage does not match returned records');}
  if(!Number.isFinite(Date.parse(str(filters.as_of))))throw Error('Invalid knowledge timestamp');
- return {space,identity:projection.key,revision:projection.revision,mode,asOf:str(filters.as_of),entities,relations,attributes,coverage:c};
+ return {space,identity:projection.key,revision:projection.revision,mode,asOf:str(filters.as_of),entities,relations,attributes,coverage:c,analysis:v.groupings==null?null:parseKnowledgeAnalysis(v.groupings,known)};
 }
 export function knowledgeNetwork(graph:Knowledge):{nodes:QueryEvidenceNode[];edges:QueryEvidenceEdge[]} {
  return {nodes:graph.entities.map(e=>({id:e.id,kind:'concept',label:e.label,data:{}})),edges:graph.relations.map(r=>({id:r.id,kind:'relation',source:r.source,target:r.target,data:{predicate:r.predicate,fact_ids:r.factIds}}))};

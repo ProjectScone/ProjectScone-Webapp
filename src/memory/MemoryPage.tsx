@@ -167,7 +167,7 @@ export function MemoryPage({ api }: { api: ApiClient }) {
           : !caps[VIEW_FEATURES[view]] ? <WorkspaceState icon="status" title="This page is not available on this server" description="Choose an available section in the workspace navigation. Your memory connection remains active."/>
           : <>
             {view === "search" && <SearchView api={api} state={search} setState={setSearch} onScope={searchInScope} canAddSources={caps['episodes.attachments']} canFilterMetadata={caps['recall.conditions']} />}
-            {view === "knowledge" && <KnowledgeView api={api} detailsAvailable={caps['entities.read']} statusAvailable={caps['status.read']} />}
+            {view === "knowledge" && <KnowledgeView api={api} analysisAvailable={caps['graph.report']} detailsAvailable={caps['entities.read']} statusAvailable={caps['status.read']} />}
             {view === "documents" && <DocumentsView api={api} attachments={caps['episodes.attachments']} />}
             {view === "profile" && <ProfileView api={api} onOpenDocuments={caps['episodes.list']?()=>setView('documents'):undefined} />}
             {view === "beliefs" && <BeliefsView api={api} onChanged={refreshPending} features={caps} />}
