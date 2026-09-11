@@ -121,3 +121,11 @@ test('document imports require explicit file support independently of provenance
  assert.equal(parseCapabilities({...fixtures.python,features:{...features,'documents.files':true}}).features['documents.files'],true);
  for(const value of ['true',1,null])assert.throws(()=>parseCapabilities({...fixtures.python,features:{...features,'documents.files':value}}));
 });
+
+
+test('source removal requires explicit workflow support independent of source reads',()=>{
+ const features={...fixtures.python.features};delete features['episodes.forget'];
+ assert.equal(parseCapabilities({...fixtures.python,features}).features['episodes.forget'],false);
+ assert.equal(parseCapabilities({...fixtures.python,features:{...features,'episodes.forget':true}}).features['episodes.forget'],true);
+ for(const value of ['true',1,null])assert.throws(()=>parseCapabilities({...fixtures.python,features:{...features,'episodes.forget':value}}));
+});

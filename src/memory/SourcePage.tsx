@@ -16,7 +16,7 @@ import {documentBinding,type DocumentBinding} from './document-evidence';
 import {SourceProvenance} from './SourceProvenance';
 
 interface Original {content:string;title:string;kind:string;date:string;images:ImageAttachment[];document:DocumentBinding|null;documentIssue:boolean}
-interface PageData {original?:Original;attachments?:boolean;understand?:boolean;models?:boolean;provenance?:boolean;documents?:boolean;issue?:string;detail?:string}
+interface PageData {forget?:boolean;original?:Original;attachments?:boolean;understand?:boolean;models?:boolean;provenance?:boolean;documents?:boolean;issue?:string;detail?:string}
 function original(value:unknown,id:number):Original {
   const text=parseRetainedSource(value,id);
   const data=value as Record<string,unknown>;
@@ -49,7 +49,7 @@ export function SourcePage({api,enabled}:{api:ApiClient;enabled:boolean}){
         const caps=parseCapabilities(await api.request<unknown>('/v1/capabilities',{signal}));
         if(!caps.features['episodes.read']){save({issue:'Source pages are unavailable on this server',detail:'The server does not advertise source reads.'});return;}
         const record=await api.request<unknown>(`/v1/episodes/${episodeId}`,{cache:'no-store',signal});
-        save({original:original(record,episodeId),attachments:caps.features['episodes.attachments'],understand:caps.features['images.understand'],models:caps.features['models.manage'],provenance:caps.features['graph.sources'],documents:caps.features['documents.provenance']});
+        save({forget:caps.features['episodes.forget'],original:original(record,episodeId),attachments:caps.features['episodes.attachments'],understand:caps.features['images.understand'],models:caps.features['models.manage'],provenance:caps.features['graph.sources'],documents:caps.features['documents.provenance']});
       }catch(error){
         save(error instanceof ApiError&&error.status===410?{issue:'This source was forgotten',detail:'Its retained text is no longer available.'}
           :error instanceof ApiError&&error.status===404?{issue:'Source unavailable',detail:'This source is not available in the linked memory space.'}
@@ -75,7 +75,7 @@ export function SourcePage({api,enabled}:{api:ApiClient;enabled:boolean}){
         {current.documents&&current.original.documentIssue&&<p role="alert">Document attachments could not be verified for this source.</p>}
         {current.documents&&documentSource&&<SourceDocumentEvidence key={`document:${space}:${episodeId}`} api={api} source={documentSource} episodeId={address.episodeId}/>}
         {current.provenance&&provenanceSource&&<SourceProvenance api={api} source={provenanceSource}/>}
-        {current.attachments&&<SourceImages api={api} episodeId={address.episodeId}/>}<SourceImageUnderstanding key={`${address.space}:${address.episodeId}`} api={api} episodeId={address.episodeId} space={address.space} images={current.original.images} available={current.understand===true} canSetup={current.models===true}/><footer><span>Episode #{episodeId} · {space}</span><button className="btn quiet small" onClick={retry}>Refresh source</button></footer>
+        {current.attachments&&<SourceImages api={api} episodeId={address.episodeId}/>}<SourceImageUnderstanding key={`${address.space}:${address.episodeId}`} api={api} episodeId={address.episodeId} space={address.space} images={current.original.images} available={current.understand===true} canSetup={current.models===true}/><footer>{current.forget&&<Link to={`/memory/sources/${address.episodeId}/forget?${new URLSearchParams({space:address.space})}`}>Review source removal</Link>}<span>Episode #{episodeId} · {space}</span><button className="btn quiet small" onClick={retry}>Refresh source</button></footer>
       </article>}
   </main>;
 }

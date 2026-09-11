@@ -439,6 +439,26 @@ The graph renders stored relationships only. Depth is a spatial layout, not a
 verified host capture are distinct. Current snapshots are bounded; lossless
 event replay and current Codex App capture have not been verified.
 
+## Source removal
+
+Source pages on servers advertising `episodes.forget` link to an impact preview
+at `/memory/sources/:id/forget?space=...`. The page checks the connected space,
+shows chunks and attachment ownership, and lists retained citing claims and
+links before requiring explicit confirmation. Claims, links and their quotes
+remain; shared attachments, downloaded copies and backups can remain too.
+
+After an unconfirmed response, Check removal status only reads. Pending cleanup
+can be resumed with a fresh confirmation; a completed tombstone confirms removal
+without fabricating the original receipt counts. The app does not automatically
+retry DELETE. HTTP transports may replay an idempotent DELETE after a broken
+connection, so the backend must retain and honor its durable cleanup identity.
+The preview is an observation rather than a lock against intervening writes.
+
+`scripts/test-source-removal.cjs` checks the packaged UI with the same local
+Playwright/browser environment variables as the other browser suites. It covers
+confirmation, paged impact, interrupted responses, explicit resumption, read-role
+denial, invalid receipts, capability/space checks, navigation and mobile layout.
+
 ## Contributing, license and citation
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and review requirements.
