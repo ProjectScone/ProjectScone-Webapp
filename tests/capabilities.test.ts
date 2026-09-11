@@ -107,3 +107,10 @@ test('knowledge and entity inspection require separate explicit capabilities',()
   for(const value of ['true',1,null])assert.throws(()=>parseCapabilities({...fixtures.python,features:{...features,[key]:value}}));
  }
 });
+
+test('document provenance requires an explicit independent capability',()=>{
+ const features={...fixtures.python.features};delete features['documents.provenance'];
+ assert.equal(parseCapabilities({...fixtures.python,features}).features['documents.provenance'],false);
+ assert.equal(parseCapabilities({...fixtures.python,features:{...features,'documents.provenance':true}}).features['documents.provenance'],true);
+ for(const value of ['true',1,null])assert.throws(()=>parseCapabilities({...fixtures.python,features:{...features,'documents.provenance':value}}));
+});
