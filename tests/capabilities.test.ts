@@ -4,6 +4,12 @@ import { readFileSync } from 'node:fs';
 import { parseCapabilities } from '../src/capabilities.ts';
 
 const fixtures = JSON.parse(readFileSync(new URL('./fixtures/http-capabilities.json', import.meta.url), 'utf8'));
+test('source provenance requires an explicit independent capability',()=>{
+ const features={...fixtures.python.features};delete features['graph.sources'];
+ assert.equal(parseCapabilities({...fixtures.python,features}).features['graph.sources'],false);
+ assert.equal(parseCapabilities({...fixtures.python,features:{...features,'graph.sources':true}}).features['graph.sources'],true);
+ for(const value of ['true',1,null])assert.throws(()=>parseCapabilities({...fixtures.python,features:{...features,'graph.sources':value}}));
+});
 test('image inference requires its own explicit capability',()=>{
   const features={...fixtures.python.features};delete features['images.understand'];
   assert.equal(parseCapabilities({...fixtures.python,features}).features['images.understand'],false);

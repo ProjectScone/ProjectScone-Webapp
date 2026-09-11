@@ -109,6 +109,17 @@ Python API service with a separate UI host. Neither suite uses the live memory d
 
 ### Knowledge workspace
 
+Retained source pages also offer Follow this source’s evidence when the server
+advertises `graph.sources`. An explicit read follows sections and stored chunks
+into quoted claims and their named entities; text-only entity mentions remain
+separate. Selecting a section, chunk, quote or mention opens its exact original
+span. The UI checks the content SHA-256, source identity, read consistency and
+UTF-8 boundaries before displaying provenance. Repeated quotes disclose their
+occurrence count and identify the first span. Chunk/claim limits and graph-read
+limits remain visible, and all returned lists page in groups of 20. Refresh,
+connection changes and cancellation discard old provenance. The source original
+remains available independently of this optional capability.
+
 The Memory navigation includes Knowledge when the server advertises
 `graph.knowledge`. This page reads the space's recorded entity graph and offers
 an entity directory, an interactive map, and current, history, proposed and
