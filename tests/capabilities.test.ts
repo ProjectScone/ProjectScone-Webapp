@@ -86,3 +86,12 @@ test('source upload requires explicit combined episode attachment support', () =
   assert.equal(parseCapabilities({...fixtures.python,features:{...fixtures.python.features,'episodes.attachments':true}}).features['episodes.attachments'], true);
   assert.throws(()=>parseCapabilities({...fixtures.python,features:{...fixtures.python.features,'episodes.attachments':'true'}}),/capabilit/i);
 });
+
+test('knowledge and entity inspection require separate explicit capabilities',()=>{
+ for(const key of ['graph.knowledge','entities.read']){
+  const features={...fixtures.python.features};delete features[key];
+  assert.equal(parseCapabilities({...fixtures.python,features}).features[key],false);
+  assert.equal(parseCapabilities({...fixtures.python,features:{...features,[key]:true}}).features[key],true);
+  for(const value of ['true',1,null])assert.throws(()=>parseCapabilities({...fixtures.python,features:{...features,[key]:value}}));
+ }
+});

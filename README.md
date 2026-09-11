@@ -107,6 +107,24 @@ Python API service with a separate UI host. Neither suite uses the live memory d
 
 ## Current boundaries
 
+### Knowledge workspace
+
+The Memory navigation includes Knowledge when the server advertises
+`graph.knowledge`. This page reads the space's recorded entity graph and offers
+an entity directory, an interactive map, and current, history, proposed and
+excluded-inclusive views. `entities.read` independently enables inspection of
+incoming/outgoing relationships, literal values and supporting claims.
+
+Coverage notices retain backend read limits. The map draws at most 1,000 of the
+returned relationships and discloses that display limit; inspection retains up
+to the backend's 50,000 supporting claims, shown in pages of 50. Source links
+require the currently verified space. Inspection rejects a changed graph
+revision, and changing connection, mode or refreshing revokes old selections.
+
+This is a recorded-knowledge view, separate from query evidence. Computed
+communities, path finding, export controls and broader graph editing remain
+follow-up work. Availability follows each native server's capabilities.
+
 ### Three-dimensional evidence map
 
 Depth renders individual records in the current snapshot with deterministic XYZ

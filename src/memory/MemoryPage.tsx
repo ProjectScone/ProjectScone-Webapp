@@ -1,3 +1,4 @@
+import {KnowledgeView} from './KnowledgeView';
 import {SourceContent} from '../components/SourceContent';
 import {MetadataFilter} from './MetadataFilter';
 import {SourcePageLink} from './SourcePageLink';
@@ -42,11 +43,12 @@ import { parseCapabilities, type Capabilities } from '../capabilities';
 import {claimGroups,filterClaimGroups,type ClaimFilter,type DisplayClaimGroup} from './claim-groups';
 
 const GROUPS: Array<{ label: string; views: Array<[View, string]> }> = [
-  { label: "Memory", views: [["search", "Search"], ["documents", "Documents"], ["profile", "Profile"], ["beliefs", "Beliefs"], ["review", "Review"]] },
+  { label: "Memory", views: [["search", "Search"], ["knowledge", "Knowledge"], ["documents", "Documents"], ["profile", "Profile"], ["beliefs", "Beliefs"], ["review", "Review"]] },
   { label: "Activity", views: [["live", "Live"], ["analytics", "Analytics"]] },
   { label: "System", views: [["scopes", "Scopes"], ["status", "Status"], ["models", "Models"]] },
 ];
 const INTRO: Record<View, [string, string]> = {
+  knowledge: ["Knowledge", "Explore the entities and connections recorded in this space, then inspect the claims and sources behind them."],
   models: ["Models", "Connect the models you run locally for conversations, memory extraction, images and voice."],
   search: ["Search", "Ask in plain words. Every result is an excerpt of something stored, and says where it came from."],
   documents: ["Documents", "Your memory starts here. Browse retained files, notes and conversations, then open the material behind them."],
@@ -87,7 +89,7 @@ function useAsync<T>(load: () => Promise<T>, deps: unknown[]) {
 }
 
 const VIEW_FEATURES: Record<View, keyof Capabilities['features']> = {
-  search: 'recall', documents: 'episodes.list', profile: 'profile.read', beliefs: 'facts.read', review: 'facts.review',
+  knowledge: 'graph.knowledge', search: 'recall', documents: 'episodes.list', profile: 'profile.read', beliefs: 'facts.read', review: 'facts.review',
   live: 'events.read', analytics: 'metrics.read', scopes: 'scopes.read', status: 'status.read', models: 'models.manage',
 };
 
@@ -152,7 +154,7 @@ export function MemoryPage({ api }: { api: ApiClient }) {
             <span className="grp">{g.label}</span>
             {g.views.filter(([id]) => caps?.[VIEW_FEATURES[id]]).map(([id, label]) => (
               <button key={id} className="nav" aria-current={view === id} onClick={() => setView(id)}>
-                <WorkspaceIcon name={id==='models'?'scopes':id}/>{label}
+                <WorkspaceIcon name={id==='models'?'scopes':id==='knowledge'?'graph':id}/>{label}
                 {id === "review" && pending ? <span className="count">{pending}</span> : null}
               </button>
             ))}
@@ -165,6 +167,7 @@ export function MemoryPage({ api }: { api: ApiClient }) {
           : !caps[VIEW_FEATURES[view]] ? <WorkspaceState icon="status" title="This page is not available on this server" description="Choose an available section in the workspace navigation. Your memory connection remains active."/>
           : <>
             {view === "search" && <SearchView api={api} state={search} setState={setSearch} onScope={searchInScope} canAddSources={caps['episodes.attachments']} canFilterMetadata={caps['recall.conditions']} />}
+            {view === "knowledge" && <KnowledgeView api={api} detailsAvailable={caps['entities.read']} statusAvailable={caps['status.read']} />}
             {view === "documents" && <DocumentsView api={api} attachments={caps['episodes.attachments']} />}
             {view === "profile" && <ProfileView api={api} onOpenDocuments={caps['episodes.list']?()=>setView('documents'):undefined} />}
             {view === "beliefs" && <BeliefsView api={api} onChanged={refreshPending} features={caps} />}
