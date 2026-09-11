@@ -9,20 +9,21 @@ const list=(v:unknown,max=1000):unknown[]=>{if(!Array.isArray(v)||v.length>max)t
 function unique<T>(values:T[]):T[]{if(new Set(values).size!==values.length)throw Error('Duplicate source provenance identity');return values;}
 function entityId(v:unknown):string {const s=text(v);if(!s.startsWith('ent:')||s.length<=4||s.length>200)throw Error('Invalid named entity identity');return s;}
 const nullableText=(v:unknown)=>v===null?null:text(v);
-export async function parseSourceProvenance(value:unknown,source:ProvenanceSource){
+export async function parseSourceProvenance(value:unknown,source:ProvenanceSource,limits={maxChunks:1000,maxClaims:1000}){
+ if(![limits.maxChunks,limits.maxClaims].every(limit=>Number.isInteger(limit)&&limit>=1&&limit<=1000))throw Error('Invalid requested source provenance limit');
  const v=object(value),episode=object(v.episode),c=object(v.coverage),read=object(c.read);
  const bytes=new TextEncoder().encode(source.content);
  const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
  if(v.schema_version!==1||v.space!==source.space||episode.id!==source.episodeId||episode.bytes!==bytes.length||episode.content_sha256!==hash||v.consistent!==true)throw Error('This provenance does not match the retained original. Refresh the source and try again.');
  const span=(value:unknown):SourceSpan=>{const s=object(value),start=count(s.start),end=count(s.end);if(start>end||end>bytes.length)throw Error('Source span is outside the original');try{return {start,end,text:new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes.subarray(start,end))};}catch{throw Error('Source span splits a UTF-8 character');}};
  const sections=list(v.sections,20000).map(value=>{const s=object(value),level=count(s.level);if(level<1||level>6)throw Error('Invalid heading level');return {id:text(s.id),title:text(s.title),level,parent:nullableText(s.parent),span:span(s)};});unique(sections.map(s=>s.id));
- const chunks=list(v.chunks).map(value=>{const chunk=object(value);return {id:id(chunk.chunk_id),ordinal:count(chunk.ordinal),span:span(chunk),section:nullableText(chunk.section)};});unique(chunks.map(chunk=>chunk.id));unique(chunks.map(chunk=>chunk.ordinal));
+ const chunks=list(v.chunks,limits.maxChunks).map(value=>{const chunk=object(value);return {id:id(chunk.chunk_id),ordinal:count(chunk.ordinal),span:span(chunk),section:nullableText(chunk.section)};});unique(chunks.map(chunk=>chunk.id));unique(chunks.map(chunk=>chunk.ordinal));
  const chunksTotal=count(c.chunks_total),truncated=flag(c.truncated),reasons=list(c.reasons,50).map(text),readReasons=list(read.reasons,50).map(text);
  if(c.chunks_shown!==chunks.length||chunksTotal<chunks.length||(!truncated&&(reasons.length||readReasons.length))||readReasons.some(reason=>!reasons.includes(reason)))throw Error('Source provenance coverage disagrees');
  const knownChunks=new Map(chunks.map(chunk=>[chunk.id,chunk]));
  const quotes=new Map<string,{start:number;occurrences:number}>();
  function locate(quote:string){let found=quotes.get(quote);if(found)return found;const first=source.content.indexOf(quote);let occurrences=0,position=first;while(position>=0){occurrences++;position=source.content.indexOf(quote,position+quote.length);}found={start:first<0?-1:new TextEncoder().encode(source.content.slice(0,first)).length,occurrences};quotes.set(quote,found);return found;}
- const claims=list(v.claims).map(value=>{
+ const claims=list(v.claims,limits.maxClaims).map(value=>{
   const f=object(value),quote=nullableText(f.quote),located=f.span===null?null:span(f.span),occurrences=count(f.occurrences),grounding=text(f.grounding),chunkIds=unique(list(f.chunks,100000).map(id));
   if(quote){const expected=locate(quote);if(expected.occurrences!==occurrences||(expected.start<0?located!==null:located?.start!==expected.start||located.text!==quote)||grounding!==(located?'quote_verified':'quote_not_found'))throw Error('Claim quote does not match its source span');}
   else if(located||occurrences||grounding!=='source_unquoted')throw Error('Unquoted claim cannot have a source span');

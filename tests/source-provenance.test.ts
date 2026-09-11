@@ -26,3 +26,9 @@ test('source span decoding preserves a byte-order mark in an exact quote',async(
  v.sections=[];v.chunks[0].end=bytes.length;v.claims[0].quote=content;v.claims[0].span={start:0,end:bytes.length};
  assert.equal((await parseSourceProvenance(v,{...source,content})).claims[0].span?.text,content);
 });
+test('source provenance enforces the requested chunk and claim limits',async()=>{
+ const v=fixture();v.chunks.push({...v.chunks[0],chunk_id:11,ordinal:1});v.coverage.chunks_total=2;v.coverage.chunks_shown=2;v.claims[0].chunks=[10,11];
+ await assert.rejects(parseSourceProvenance(v,source,{maxChunks:1,maxClaims:200}));
+ const w=fixture();w.claims.push({...w.claims[0],fact_id:2});w.coverage.claims_shown=2;w.entities.forEach(e=>e.claims.push(2));
+ await assert.rejects(parseSourceProvenance(w,source,{maxChunks:64,maxClaims:1}));
+});

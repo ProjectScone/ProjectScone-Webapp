@@ -20,7 +20,7 @@ export function SourceProvenance({api,source}:{api:ApiClient;source:ProvenanceSo
   if(!enabled||!valid)return;
   const controller=new AbortController(),signal=AbortSignal.any([controller.signal,AbortSignal.timeout(30000)]);
   api.request<unknown>('/v1/graph/sources?'+new URLSearchParams({episode:String(source.episodeId),max_chunks:chunkLimit,max_claims:claimLimit}),{signal,cache:'no-store'})
-   .then(value=>parseSourceProvenance(value,source)).then(data=>{if(!controller.signal.aborted)setSnapshot({request,data});})
+   .then(value=>parseSourceProvenance(value,source,{maxChunks:Number(chunkLimit),maxClaims:Number(claimLimit)})).then(data=>{if(!controller.signal.aborted)setSnapshot({request,data});})
    .catch(error=>{if(!controller.signal.aborted)setSnapshot({request,error:error instanceof Error?error.message:'Source provenance could not be read.'});});
   return()=>controller.abort();
  },[request]);
