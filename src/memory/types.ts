@@ -36,6 +36,7 @@ export interface RecallItem {
 }
 
 export interface RecallResponse {
+  entities?:import('./recall-entities').RecallEntity[];
   evidence_graph?: unknown;
   event_id?: number | null;
   items: RecallItem[];
@@ -122,6 +123,7 @@ export type { ApiClient } from '../api';
 export type View = "knowledge" | "search" | "documents" | "profile" | "beliefs" | "review" | "live" | "analytics" | "scopes" | "status" | "models";
 
 export interface SearchState {
+  graphBoost?:boolean;
   metadataFilter?:import('./metadata-filter').AppliedFilter;
   q: string;
   where: Record<string, string>;

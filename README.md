@@ -271,6 +271,17 @@ requests are cancelled and late replies ignored. Failed queries expose **Retry
 search** and do not retain another query's error. Requests have a 10-second
 deadline. Editing the input alone does not submit a search; press Search or Enter.
 
+When `recall.graph_boost` is advertised, Search offers **Use entity-assisted
+retrieval**, off by default. It adds passages naming entities connected to the
+submitted query while retaining its metadata, tag and time filters. The result
+lists considered query entities and neighbors separately from passage support;
+**why this** includes the entity lane's rank when reported. Missing or malformed
+expansion acknowledgements are rejected, and limited/unavailable retrieval stays
+visible even on empty results. Changing this option cancels obsolete requests;
+late replies cannot restore the previous expansion. A selected option that loses
+capability support pauses the search until explicitly turned off. A new memory
+connection starts with the option off.
+
 The Review inbox groups recorded subjects, filters by origin and checked quotes,
 and renders 25 cards per page. Sources are loaded only when expanded. Bulk
 approval freezes every matching ID across pages, confirms explicitly, and runs

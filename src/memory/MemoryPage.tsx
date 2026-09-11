@@ -1,3 +1,5 @@
+import {RecallEntities} from './RecallEntities';
+import {recallLaneLabels} from './recall-entities';
 import {KnowledgeView} from './KnowledgeView';
 import {SourceContent} from '../components/SourceContent';
 import {MetadataFilter} from './MetadataFilter';
@@ -166,7 +168,7 @@ export function MemoryPage({ api }: { api: ApiClient }) {
         {!caps ? discovery.error ? <WorkspaceState icon="status" role="alert" className="workspace-state-notice" title="Server capabilities unavailable" description={<><p>We could not verify which operations this server supports. Your selected page is preserved; no workflow requests were sent.</p><p className="workspace-state-detail">{discovery.error}</p></>} actions={<button className="btn quiet" onClick={discovery.retry}>Retry capabilities</button>}/> : <WorkspaceState icon="status" role="status" busy title="Checking server capabilities…" description="Verifying the operations available in this memory space before loading your workspace."/>
           : !caps[VIEW_FEATURES[view]] ? <WorkspaceState icon="status" title="This page is not available on this server" description="Choose an available section in the workspace navigation. Your memory connection remains active."/>
           : <>
-            {view === "search" && <SearchView api={api} state={search} setState={setSearch} onScope={searchInScope} canAddSources={caps['episodes.attachments']} canFilterMetadata={caps['recall.conditions']} />}
+            {view === "search" && <SearchView api={api} state={search} setState={setSearch} onScope={searchInScope} canAddSources={caps['episodes.attachments']} canFilterMetadata={caps['recall.conditions']} canUseGraph={caps['recall.graph_boost']} />}
             {view === "knowledge" && <KnowledgeView api={api} seedsAvailable={caps['graph.knowledge_seeds']} pagingAvailable={caps['graph.knowledge_paging']} timelineAvailable={caps['graph.timeline']} analysisAvailable={caps['graph.report']} pathsAvailable={caps['graph.path']} exportsAvailable={caps['graph.export']} detailsAvailable={caps['entities.read']} statusAvailable={caps['status.read']} />}
             {view === "documents" && <DocumentsView api={api} attachments={caps['episodes.attachments']} />}
             {view === "profile" && <ProfileView api={api} onOpenDocuments={caps['episodes.list']?()=>setView('documents'):undefined} />}
@@ -210,8 +212,9 @@ function Grounding({ f }: { f: Fact }) {
 
 /* ---------- search ---------- */
 
-function SearchView({ api, state, setState, onScope, canAddSources, canFilterMetadata }: {
+function SearchView({ api, state, setState, onScope, canAddSources, canFilterMetadata, canUseGraph }: {
   canFilterMetadata:boolean;
+  canUseGraph:boolean;
   canAddSources: boolean;
   api: ApiClient; state: SearchState; setState: (f: (s: SearchState) => SearchState) => void; onScope: (k: string, v: string) => void;
 }) {
@@ -222,6 +225,7 @@ function SearchView({ api, state, setState, onScope, canAddSources, canFilterMet
   const [fval, setFval] = useState("");
   const [feedback, setFeedback] = useState<Record<string, boolean>>({});
   const active = Boolean(state.q || Object.keys(state.where).length || state.tags.length || state.asOf || state.metadataFilter);
+  const unsupportedGraph=Boolean(state.graphBoost&&!canUseGraph);
   const unsupportedFilter=Boolean(state.metadataFilter&&!canFilterMetadata);
 
   const params = new URLSearchParams({ q: state.q || "*", limit: "25", evidence_graph: 'true' });
@@ -230,9 +234,10 @@ function SearchView({ api, state, setState, onScope, canAddSources, canFilterMet
   if (state.tags.length) params.set("tags", state.tags.join(","));
   if (state.asOf) params.set("as_of", state.asOf);
   if(state.metadataFilter)params.set('conditions',state.metadataFilter.json);
+  if(state.graphBoost)params.set('graph_boost','true');
   const query = params.toString();
 
-  const results = useSearchRecall(api, query, active&&!unsupportedFilter);
+  const results = useSearchRecall(api, query, active&&!unsupportedFilter&&!unsupportedGraph);
   const start = useAsync(
     () => active?Promise.resolve(null):Promise.all([
       api.request<Status>("/v1/status"),
@@ -289,6 +294,8 @@ function SearchView({ api, state, setState, onScope, canAddSources, canFilterMet
           <button className="btn small quiet" onClick={addFilter}>Add</button>
         </div>
       )}
+      {canUseGraph&&<label className="recall-entity-option"><input type="checkbox" checked={state.graphBoost===true} onChange={event=>setState(s=>({...s,graphBoost:event.target.checked}))}/>Use entity-assisted retrieval<span>Include passages naming entities connected to your query.</span></label>}
+      {unsupportedGraph&&<p role="alert">This server does not support the selected entity-assisted retrieval. Search is paused. <button className="btn quiet small" onClick={()=>setState(s=>({...s,graphBoost:false}))}>Turn off entity-assisted retrieval</button></p>}
       {canFilterMetadata&&<MetadataFilter value={state.metadataFilter} onApply={metadataFilter=>setState(s=>({...s,metadataFilter}))}/>}
       {unsupportedFilter&&<p role="alert">This server does not advertise support for the applied metadata filter. Search is paused; clear the filter explicitly to search without it. <button className="btn quiet small" onClick={()=>setState(s=>({...s,metadataFilter:undefined}))}>Clear metadata filter</button></p>}
       </section>
@@ -316,7 +323,7 @@ function SearchView({ api, state, setState, onScope, canAddSources, canFilterMet
             </>
           );
         })()
-      ) : unsupportedFilter?null:results.error ? <div role="alert"><ErrorLine message={results.error} /><button className="btn quiet" onClick={results.retry}>Retry search</button></div> : !results.data ? <Empty>Searching…</Empty> : (
+      ) : unsupportedFilter||unsupportedGraph?null:results.error ? <div role="alert"><ErrorLine message={results.error} /><button className="btn quiet" onClick={results.retry}>Retry search</button></div> : !results.data ? <Empty>Searching…</Empty> : (
         <ResultList r={results.data} api={api} asOf={state.asOf} onScope={onScope} feedback={feedback} sendFeedback={sendFeedback}
           onTag={(t) => setState((s) => s.tags.includes(t) ? s : { ...s, tags: [...s.tags, t] })} />
       )}
@@ -329,15 +336,16 @@ function ResultList({ r, api, asOf, onScope, onTag, feedback, sendFeedback }: {
   r: RecallResponse; asOf: string; onScope: (k: string, v: string) => void; onTag: (t: string) => void;
   feedback: Record<string, boolean>; sendFeedback: (e: number, c: number, u: boolean) => void;
 }) {
-  if (!r.items.length && !r.facts.length) return <><QueryEvidenceGraph value={r.evidence_graph} api={api}/><Empty>Nothing matched. Store something with <code>scone-memory remember</code> and ask again.</Empty></>;
   const reduction = r.context_reduction != null && r.space_bytes ? `, ${Math.round(r.context_reduction * 100)}% of stored bytes left behind` : "";
   return (
     <>
       <p className="summary-line">
         {r.items.length} excerpt{r.items.length === 1 ? "" : "s"}{reduction}
-        {r.degraded.length > 0 && <span className="err"> · one lane failed: {r.degraded.join("; ")}</span>}
+        {r.degraded.length > 0 && <span className="err"> · retrieval was limited or unavailable: {r.degraded.join("; ")}</span>}
       </p>
+      <RecallEntities entities={r.entities}/>
       <QueryEvidenceGraph value={r.evidence_graph} api={api}/>
+      {!r.items.length&&!r.facts.length&&<Empty>Nothing matched. Store something with <code>scone-memory remember</code> and ask again.</Empty>}
       {r.facts.length > 0 && (
         <div className="facts-inline">
           <h3>Recorded claims that held{asOf ? ` on ${asOf}` : ""}</h3>
@@ -359,7 +367,7 @@ function ResultList({ r, api, asOf, onScope, onTag, feedback, sendFeedback }: {
                   <span><span className="rank"><i style={{ width: `${Math.round((i.score || 0) * 100)}%` }} /></span> <span className="sub">{(i.score || 0).toFixed(2)}, top is 1.00</span></span>
                   {i.lanes && (
                     <><span className="k">found by</span>
-                      <span>{[i.lanes.vector && `vector lane, rank ${i.lanes.vector}`, i.lanes.text && `text lane, rank ${i.lanes.text}`].filter(Boolean).join(" and ") || "unknown"}</span></>
+                      <span>{recallLaneLabels(i.lanes).join(" and ") || "unknown"}</span></>
                   )}
                   {i.similarity != null && <><span className="k">cosine similarity</span><span>{i.similarity.toFixed(3)} <span className="sub">uncalibrated</span></span></>}
                   <span className="k">episode</span><span>#{i.episode_id}, chunk #{i.chunk_id}</span>
