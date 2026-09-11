@@ -169,7 +169,7 @@ export function MemoryPage({ api }: { api: ApiClient }) {
           : !caps[VIEW_FEATURES[view]] ? <WorkspaceState icon="status" title="This page is not available on this server" description="Choose an available section in the workspace navigation. Your memory connection remains active."/>
           : <>
             {view === "search" && <SearchView api={api} state={search} setState={setSearch} onScope={searchInScope} canAddSources={caps['episodes.attachments']} canFilterMetadata={caps['recall.conditions']} canUseGraph={caps['recall.graph_boost']} />}
-            {view === "knowledge" && <KnowledgeView api={api} seedsAvailable={caps['graph.knowledge_seeds']} pagingAvailable={caps['graph.knowledge_paging']} timelineAvailable={caps['graph.timeline']} analysisAvailable={caps['graph.report']} pathsAvailable={caps['graph.path']} exportsAvailable={caps['graph.export']} detailsAvailable={caps['entities.read']} statusAvailable={caps['status.read']} />}
+            {view === "knowledge" && <KnowledgeView api={api} walkAvailable={caps['graph.knowledge_walk']} seedsAvailable={caps['graph.knowledge_seeds']} pagingAvailable={caps['graph.knowledge_paging']} timelineAvailable={caps['graph.timeline']} analysisAvailable={caps['graph.report']} pathsAvailable={caps['graph.path']} exportsAvailable={caps['graph.export']} detailsAvailable={caps['entities.read']} statusAvailable={caps['status.read']} />}
             {view === "documents" && <DocumentsView api={api} attachments={caps['episodes.attachments']} />}
             {view === "profile" && <ProfileView api={api} onOpenDocuments={caps['episodes.list']?()=>setView('documents'):undefined} />}
             {view === "beliefs" && <BeliefsView api={api} onChanged={refreshPending} features={caps} />}

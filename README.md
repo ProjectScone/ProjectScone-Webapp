@@ -138,7 +138,7 @@ capability retain the bounded first view.
 `graph.knowledge_seeds` independently enables Explore around entities. Choose up
 to 24 starting entities from the map or verified whole-space search, then read
 their neighborhood with an entity limit and hub degree cutoff. Connections are
-followed in both directions; high-degree hubs are shown but not expanded unless
+followed in both directions by default; high-degree hubs are shown but not expanded unless
 explicitly selected as starting entities. The response must preserve the
 requested seeds, cutoff, snapshot and known identities/support. Partial reads,
 entities outside the walk and skipped hubs remain explicit. The canvas draws at
@@ -146,6 +146,21 @@ most 150 entities and 1,000 relationships; a directory pages through every
 returned entity in groups of 20 and can bring an off-map selection into view.
 Inspection reuses the main claim/source inspector. Draft changes, clearing and
 main graph changes discard obsolete results and neighborhood-owned inspection.
+
+With `graph.knowledge_walk`, the same panel adds incoming/outgoing/both direction
+and a limit of 1–8 steps or no step limit. Incoming follows object to subject;
+arrows always preserve the original subject-to-object claim. The directory
+shows each entity's distance from the nearest start. Responses must match the
+requested direction/depth and include a directed predecessor for each step;
+provable shortcuts cannot be reported as longer distances. Hidden full-read hub
+degree is respected rather than guessed from displayed edges. Capability changes
+clear walk-owned results and inspection. Older servers receive no direction or
+step parameters and do not show distance labels.
+
+After `pnpm build`, `node --test scripts/test-knowledge-walk.cjs` exercises the
+packaged controls against an isolated read-only HTTP fixture. Set
+`SCONE_PLAYWRIGHT_MODULE`, `SCONE_BROWSER_ENGINE` and `SCONE_BROWSER_PATH` when
+using a separately provisioned Playwright/browser installation.
 
 Coverage notices retain backend read limits. The map draws at most 1,000 of the
 returned relationships and discloses that display limit; inspection retains up
