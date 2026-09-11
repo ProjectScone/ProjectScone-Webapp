@@ -2,6 +2,7 @@ import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import type {ApiClient} from '../api';
 import {KnowledgeExport} from './KnowledgeExport';
 import {KnowledgeReport} from './KnowledgeReport';
+import {KnowledgeTimeline} from './KnowledgeTimeline';
 import {KnowledgePath} from './KnowledgePath';
 import type {PathEntity} from './knowledge-path';
 import {KnowledgeCommunities,KnowledgeImportance} from './KnowledgeCommunities';
@@ -20,7 +21,7 @@ const errorText=(error:unknown)=>error instanceof Error?error.message:'The knowl
 function CoverageNotice({value}:{value:Coverage}){
  return <div className="knowledge-coverage" role="status"><strong>{value.truncated?'Partial view':'Returned view'}</strong><span>{value.counts.facts_read??0} ledger claims read{value.counts.facts_counted!==undefined?` · ${value.counts.facts_counted} match this view`:''}</span>{value.reasons.length>0&&<span>{value.reasons.map(reason=>reason.replaceAll('_',' ')).join(' · ')}</span>}</div>;
 }
-export function KnowledgeView({api,detailsAvailable,statusAvailable,analysisAvailable,pathsAvailable,exportsAvailable}:{api:ApiClient;detailsAvailable:boolean;statusAvailable:boolean;analysisAvailable:boolean;pathsAvailable:boolean;exportsAvailable:boolean}){
+export function KnowledgeView({api,detailsAvailable,statusAvailable,analysisAvailable,pathsAvailable,exportsAvailable,timelineAvailable}:{api:ApiClient;detailsAvailable:boolean;statusAvailable:boolean;analysisAvailable:boolean;pathsAvailable:boolean;exportsAvailable:boolean;timelineAvailable:boolean}){
  const [mode,setMode]=useState<KnowledgeMode>('current'),[attempt,setAttempt]=useState(0);
  const [showAnalysis,setShowAnalysis]=useState(false);
  const [resolutionChoice,setResolutionChoice]=useState<{api:ApiClient;value:number}|null>(null);
@@ -60,6 +61,7 @@ export function KnowledgeView({api,detailsAvailable,statusAvailable,analysisAvai
    {analysisAvailable&&<details className="knowledge-path"><summary>Explore a knowledge report</summary><KnowledgeReport api={api} graph={graph} clearInspection={clearReportInspection} inspect={detailsAvailable?(entity,factIds)=>{setCommunity(null);setSelection({graph,id:entity.id,reference:entity,factIds,fromReport:true});requestAnimationFrame(()=>{inspector.current?.focus({preventScroll:true});inspector.current?.scrollIntoView({block:'nearest'});});}:undefined}/></details>}
    {graph.analysis&&groups&&<><KnowledgeCommunities analysis={graph.analysis} groups={groups} selected={communityId} choose={id=>{setCommunity({graph,id});setSelection(null);}}/>{graph.analysis.resolution!==null&&<MapResolution key={resolution} value={resolution} apply={value=>setResolutionChoice({api,value})}/>}</>}
    {pathsAvailable&&detailsAvailable&&<details className="knowledge-path"><summary>Find a connection</summary><KnowledgePath api={api} graph={graph} clearInspection={clearPathInspection} inspect={(entity,factIds)=>{setCommunity(null);setSelection({graph,id:entity.id,reference:entity,factIds,fromPath:true});requestAnimationFrame(()=>{inspector.current?.focus({preventScroll:true});inspector.current?.scrollIntoView({block:'nearest'});});}}/></details>}
+   {timelineAvailable&&selected&&<KnowledgeTimeline key={selected} api={api} graph={graph} entityId={selected} label={graph.entities.find(entity=>entity.id===selected)?.label??selection?.reference?.label??selected}/>}
    <div className="knowledge-summary"><strong>{graph.entities.length} entities</strong><span>{graph.relations.length} relationships</span><span>{graph.attributes.length} value{graph.attributes.length===1?'':'s'}</span><span>As of {new Date(graph.asOf).toLocaleString()}</span></div>
    {!graph.entities.length?<div className="knowledge-empty"><h2>No entities in this view</h2><p>Store and extract claims, or choose another claim view. {graph.coverage.truncated?'This read was limited, so absence is not conclusive.':''}</p></div>:<div className="knowledge-layout">
     <aside className="knowledge-directory" aria-label="Entity directory"><label>Find in this view<input type="search" value={query} onChange={event=>setQuery(event.target.value)} placeholder="Name or kind"/></label><p>{visible.length} of {graph.entities.length} entities</p><ul>{visible.map(entity=><li key={entity.id}><button type="button" aria-pressed={selected===entity.id} onClick={()=>choose(entity.id)}><strong>{entity.label}</strong><span>{entity.kind??'Unclassified'} · {entity.claims} claims</span></button></li>)}</ul>{!visible.length&&<p>No matching entities in the returned view.</p>}</aside>

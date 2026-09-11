@@ -4,6 +4,12 @@ import { readFileSync } from 'node:fs';
 import { parseCapabilities } from '../src/capabilities.ts';
 
 const fixtures = JSON.parse(readFileSync(new URL('./fixtures/http-capabilities.json', import.meta.url), 'utf8'));
+test('entity timelines require an independent explicit capability',()=>{
+ const features={...fixtures.python.features};delete features['graph.timeline'];
+ assert.equal(parseCapabilities({...fixtures.python,features}).features['graph.timeline'],false);
+ assert.equal(parseCapabilities({...fixtures.python,features:{...features,'graph.timeline':true}}).features['graph.timeline'],true);
+ for(const value of ['true',1,null])assert.throws(()=>parseCapabilities({...fixtures.python,features:{...features,'graph.timeline':value}}));
+});
 test('source provenance requires an explicit independent capability',()=>{
  const features={...fixtures.python.features};delete features['graph.sources'];
  assert.equal(parseCapabilities({...fixtures.python,features}).features['graph.sources'],false);

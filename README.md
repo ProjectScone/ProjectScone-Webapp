@@ -152,6 +152,17 @@ supporting records. Reports retain sampling and partial-read disclosures and
 verify space, projection, time, settings and known entity identities. Changing
 settings, refreshing or cancelling discards old report results and inspection.
 
+With `graph.timeline`, selecting an entity offers a valid-time timeline across
+outgoing, incoming and value lanes. This history includes closed, proposed and
+excluded records independently of the map's claim filter. Choose a UTC moment
+to mark which records count then, inspect exact intervals and verified quotes,
+follow supersession or stored claim links, and open retained sources. Linked
+records reveal their lane and page. The UI checks entity keys, revision, time,
+validity markers, lane membership and requested limits; it permits the history
+projection's digest to differ from the current-view digest. Returned records
+page in groups of 20, with capped and stale reads disclosed. Entity, graph and
+request changes revoke old timeline evidence.
+
 With `graph.path` and `entities.read`, Find a connection searches entities across
 the space, including those outside the initial map. Choose exact endpoints and
 hop, route and hub limits to inspect shortest routes from the backend. Each hop

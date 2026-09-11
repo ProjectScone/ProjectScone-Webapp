@@ -1,0 +1,22 @@
+.knowledge-timeline{margin:16px 0;border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow-wrap:anywhere;}
+.knowledge-timeline>summary{padding:16px;cursor:pointer;font-weight:600;}
+.knowledge-timeline>section{padding:0 20px 20px;}
+.knowledge-timeline form,.knowledge-timeline-filters,.knowledge-timeline nav{display:flex;flex-wrap:wrap;gap:12px;align-items:end;}
+.knowledge-timeline label{display:grid;gap:6px;max-width:100%;}
+.knowledge-timeline input,.knowledge-timeline select{max-width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:inherit;}
+.knowledge-timeline input[type=number]{width:120px;}
+.knowledge-timeline-filters{margin-top:16px;}
+.knowledge-timeline-filters label:last-child{display:flex;align-items:center;}
+.knowledge-timeline-axis{display:flex;justify-content:space-between;gap:12px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--line);padding:12px 0;}
+.knowledge-timeline-moment{font-size:12px;}
+.knowledge-timeline-lane h4{margin:16px 0 8px;}
+.knowledge-timeline-item{display:grid;gap:5px;width:100%;text-align:left;background:transparent;border:1px solid transparent;border-bottom-color:var(--line);border-radius:6px;padding:10px;cursor:pointer;color:inherit;}
+.knowledge-timeline-item[aria-pressed=true]{background:var(--accent-soft);border-color:var(--accent);}
+.knowledge-timeline-item small{font-size:11px;color:var(--muted);}
+.knowledge-timeline-track{display:block;position:relative;height:22px;background:var(--bg);border-radius:3px;overflow:hidden;}
+.knowledge-timeline-marker{position:absolute;height:100%;border-left:2px dotted var(--text);z-index:1;}
+.knowledge-timeline-bar{position:absolute;top:5px;height:12px;min-width:3px;background:#8995a7;border-radius:3px;line-height:10px;text-align:right;color:white;font-style:normal;}
+.knowledge-timeline-bar.held{background:#346dcc;}.knowledge-timeline-bar.proposed{background:#a86a09;}.knowledge-timeline-bar.excluded{background:#b83b49;border:1px dashed white;}
+.knowledge-timeline-record{padding:16px;margin-top:16px;border:1px solid var(--line);border-radius:8px;background:var(--bg);}
+.knowledge-timeline-record blockquote{white-space:pre-wrap;border-left:3px solid var(--line);margin:12px 0;padding-left:12px;}
+.knowledge-timeline-link{font:inherit;border:0;background:none;padding:4px;color:var(--accent);text-decoration:underline;cursor:pointer;}
