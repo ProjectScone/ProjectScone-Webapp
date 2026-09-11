@@ -99,6 +99,29 @@ page. No delete controls or unsupported write operations are inferred from the
 read-only inventory capability. Older servers without `episodes.list` do not
 show the section or receive inventory requests.
 
+When `documents.files`, `documents.provenance`, `episodes.attachments` and
+`episodes.read` are all advertised, **Import documents** opens a file queue.
+It discovers installed formats and the server's file-size limit before allowing
+selection. Up to 20 files and 100 MiB can be queued; each file uploads its original
+bytes, indexes using its selected filename, then verifies the source identity,
+linked original/manifest, extracted text and source locators. Imports run one at
+a time, with pause taking effect after the current file. A confirmed receipt
+opens the source page or its extracted segments and table evidence.
+
+The queue belongs to the open Documents view. It does not persist across view
+changes, closing or reload, and does not represent a durable background job.
+Saved sources remain stored. Upload or authorization failures can be queued
+again; ambiguous indexing outcomes require checking the library first and have
+no automatic write retry. A saved source whose verification failed retains its
+ID for an explicit read-only retry. Availability describes parser dependencies,
+not whether a particular file is valid. PDF imports use embedded text; scanned
+PDF OCR and parser settings are not part of this upload control.
+
+After building, `node --test scripts/test-document-imports.cjs` verifies the
+packaged queue, pause, failure/retry, capability gating and mobile layout against
+an isolated HTTP fixture. It accepts `SCONE_DOCUMENTS_HTML`,
+`SCONE_PLAYWRIGHT_MODULE`, `SCONE_BROWSER_ENGINE` and `SCONE_BROWSER_PATH`.
+
 The browser boundary suite is `scripts/test-documents.cjs`, with
 `SCONE_DOCUMENTS_HTML` pointing to the isolated packaged artifact above.
 `scripts/test-conversations-native.cjs` also covers Documents pagination, import,

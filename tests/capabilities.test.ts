@@ -114,3 +114,10 @@ test('document provenance requires an explicit independent capability',()=>{
  assert.equal(parseCapabilities({...fixtures.python,features:{...features,'documents.provenance':true}}).features['documents.provenance'],true);
  for(const value of ['true',1,null])assert.throws(()=>parseCapabilities({...fixtures.python,features:{...features,'documents.provenance':value}}));
 });
+
+test('document imports require explicit file support independently of provenance reads',()=>{
+ const features={...fixtures.python.features,'documents.provenance':true};delete features['documents.files'];
+ assert.equal(parseCapabilities({...fixtures.python,features}).features['documents.files'],false);
+ assert.equal(parseCapabilities({...fixtures.python,features:{...features,'documents.files':true}}).features['documents.files'],true);
+ for(const value of ['true',1,null])assert.throws(()=>parseCapabilities({...fixtures.python,features:{...features,'documents.files':value}}));
+});

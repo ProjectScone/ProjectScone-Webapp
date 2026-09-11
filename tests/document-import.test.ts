@@ -90,3 +90,14 @@ test('an indexing redirect cannot turn a completed write into a retryable permis
  change('redirect-write');const result=await importDocument(api,file(),formats(),new AbortController().signal,()=>{});
  assert.equal(result.status,'uncertain');assert.deepEqual(calls,['POST /v1/attachments','POST /v1/documents']);
 }));
+
+
+test('combined queue bytes are bounded and an already-cancelled import makes no requests',async()=>{
+ const catalog=parseDocumentFormats({max_input_bytes:25*1024*1024,formats:{'.csv':{available:true,parser:'text'}}});
+ const sized=Array.from({length:5},()=>{const value=file();Object.defineProperty(value,'size',{value:21*1024*1024});return value;});
+ assert.throws(()=>validateDocumentSelection(sized,catalog),/100 MiB/);
+ await fixture(async(api,calls)=>{const controller=new AbortController();controller.abort();const phases:string[]=[];
+  const result=await importDocument(api,file(),formats(),controller.signal,phase=>phases.push(phase));
+  assert.equal(result.status,'failed');assert.deepEqual(calls,[]);assert.deepEqual(phases,[]);
+ });
+});

@@ -1,0 +1,25 @@
+.document-import{margin:0 0 28px;padding:24px;border:1px solid var(--line);border-radius:16px;background:var(--surface);min-width:0}
+.document-import header,.import-actions,.import-row-heading{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.document-import h2{margin:6px 0;font-size:23px;letter-spacing:-.6px}
+.document-import p{font-size:14px;line-height:1.6;color:var(--muted);overflow-wrap:anywhere}
+.document-import .import-session{font-size:12px;border-left:2px solid var(--line);padding-left:12px}
+.import-picker{display:grid;gap:12px;padding:20px;margin:20px 0 12px;border:1px dashed var(--line);border-radius:10px;background:var(--surface-2);font-size:14px;font-weight:600}
+.import-picker input{width:100%;min-width:0;font:inherit;font-weight:400}
+.import-picker input::file-selector-button{border:1px solid var(--line);border-radius:6px;padding:8px 12px;background:var(--surface);color:inherit;margin-right:10px;cursor:pointer}
+.document-import small{display:block;font-size:12px;font-weight:400;color:var(--muted);margin-top:6px}
+.document-import summary{cursor:pointer;font-size:14px;padding:10px 0;font-weight:600}
+.import-formats ul{max-height:250px;overflow:auto;list-style:none;padding:0;font-size:12px}
+.import-formats li{display:grid;grid-template-columns:65px 1fr;gap:12px;padding:7px;border-bottom:1px solid var(--line)}
+.import-actions{margin-top:18px;padding:12px 0;border-top:1px solid var(--line)}
+.import-actions>div{display:flex;flex-wrap:wrap;gap:8px}
+.import-list{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:12px}
+.import-row{padding:18px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;min-width:0}
+.import-row-heading>div{min-width:0}.import-row strong{overflow-wrap:anywhere;font-size:14px}
+.import-state{font-size:12px;white-space:nowrap;padding:5px 9px;border-radius:20px;border:1px solid var(--line);background:var(--surface)}
+.import-verified .import-state{color:#315c38;border-color:#a7bca7}.import-uncertain .import-state,.import-failed .import-state{color:#845024;border-color:#c7a789}
+.document-import .import-remove{margin-top:12px;color:var(--muted)}
+.import-evidence{min-width:0}.import-evidence ul{list-style:none;padding:0;display:grid;gap:12px}
+.import-evidence pre{margin:8px 0;padding:12px;max-height:240px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:var(--surface);font:12px/1.7 ui-monospace,SFMono-Regular,monospace}
+.import-evidence nav{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px}
+.import-evidence .import-digest{font:11px/1.6 ui-monospace,SFMono-Regular,monospace;overflow-wrap:anywhere}
+@media(max-width:600px){.document-import{padding:16px}.document-import header{align-items:flex-start}.import-actions{align-items:stretch;flex-direction:column}.import-row-heading{align-items:flex-start;flex-direction:column;gap:8px}.import-picker{padding:12px}.import-row{padding:12px}}
