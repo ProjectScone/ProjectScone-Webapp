@@ -1,5 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import type {ApiClient} from '../api';
+import {DocumentOriginal} from './DocumentOriginal';
 import {SourceDocumentEvidence} from './SourceDocumentEvidence';
 import {SourcePageLink} from './SourcePageLink';
 import {importDocument,parseDocumentFormats,validateDocumentSelection,verifyDocumentImport,type DocumentFormats,type ImportOutcome,type ImportPhase,type VerifiedImport} from './document-import';
@@ -97,6 +98,7 @@ function ImportEvidence({api,value}:{api:ApiClient;value:VerifiedImport}){
  return <div className="import-evidence"><p>Source #{receipt.episodeId} · {receipt.segments} extracted {receipt.segments===1?'segment':'segments'} · {receipt.format}{receipt.deduplicated?' · Existing source reused':''}</p>
   <SourcePageLink api={api} episodeId={receipt.episodeId}/>
   <details><summary>Inspect extracted source</summary><p>{evidence.filename} · {evidence.parser}. Original identity and extracted text match the saved source.</p><ul>{evidence.segments.slice(page*20,(page+1)*20).map((segment,index)=><li key={page*20+index}><strong>{segment.locator}</strong><pre>{segment.text}</pre></li>)}</ul>{evidence.segments.length>20&&<nav aria-label="Extracted segment pages"><button className="btn quiet small" disabled={!page} onClick={()=>setPage(page-1)}>Previous segments</button><span>Page {page+1} of {Math.ceil(evidence.segments.length/20)}</span><button className="btn quiet small" disabled={(page+1)*20>=evidence.segments.length} onClick={()=>setPage(page+1)}>Next segments</button></nav>}<p className="import-digest">Original SHA-256: {receipt.original.attachment_id}</p></details>
+  <details><summary>Download original file</summary><DocumentOriginal api={api} source={source} episodeId={receipt.episodeId}/></details>
   {evidence.tables.length>0&&<SourceDocumentEvidence api={api} episodeId={receipt.episodeId} source={source}/>}
  </div>;
 }

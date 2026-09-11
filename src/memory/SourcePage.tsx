@@ -5,11 +5,12 @@ import {parseCapabilities} from '../capabilities';
 import {SourceContent} from '../components/SourceContent';
 import {SourceImages} from '../components/SourceImages';
 import {WorkspaceState} from '../components/WorkspaceState';
-import {parseRetainedSource} from './source-inventory';
+import {parseRetainedSource,documentDisplayName} from './source-inventory';
 import {readSourceAddress,sourceAddress,verifiedSpace} from './source-address';
 import './source-page.css';
 import {SourceImageUnderstanding} from './SourceImageUnderstanding';
 import {sourceUnderstandingImages} from './image-understanding';
+import {DocumentOriginal} from './DocumentOriginal';
 import {SourceDocumentEvidence} from './SourceDocumentEvidence';
 import {documentBinding,type DocumentBinding} from './document-evidence';
 import {SourceProvenance} from './SourceProvenance';
@@ -22,7 +23,9 @@ function original(value:unknown,id:number):Original {
   if(typeof data.kind!=='string'||!data.kind||typeof data.created_at!=='string'||!(data.source==null||typeof data.source==='string'))throw Error('Invalid source metadata');
   let document:DocumentBinding|null=null,documentIssue=false;
   try{document=documentBinding(value);}catch{documentIssue=true;}
-  return {document,documentIssue,content:text.content,title:typeof data.source==='string'&&data.source?data.source:`Source episode #${id}`,kind:data.kind,date:data.created_at,images:sourceUnderstandingImages(data.attachments)};
+  const metadata=data.metadata&&typeof data.metadata==='object'&&!Array.isArray(data.metadata)?data.metadata as Record<string,unknown>:{};
+  const filename=document?documentDisplayName(metadata.document_filename):null;
+  return {document,documentIssue,content:text.content,title:filename||(typeof data.source==='string'&&data.source?data.source:`Source episode #${id}`),kind:data.kind,date:data.created_at,images:sourceUnderstandingImages(data.attachments)};
 }
 
 export function SourcePage({api,enabled}:{api:ApiClient;enabled:boolean}){
@@ -66,7 +69,8 @@ export function SourcePage({api,enabled}:{api:ApiClient;enabled:boolean}){
       :<article><header className="source-page-heading"><div><span className="eyebrow">{space} / Episode #{episodeId}</span><h1 ref={heading} tabIndex={-1}>{current.original.title}</h1><p>{current.original.kind} · {current.original.date||'Date unavailable'}</p></div>
         <div><button className="btn quiet small" onClick={async()=>{try{await navigator.clipboard.writeText(new URL(sourceAddress(address.episodeId,address.space),window.location.origin).href);setCopied('Link copied.');}catch{setCopied('Copy unavailable. Copy the source link below.');}}}>Copy source link</button><span role="status">{copied}</span></div></header>
         {copied.startsWith('Copy unavailable')&&<input aria-label="Source permalink" readOnly value={new URL(sourceAddress(address.episodeId,address.space),window.location.origin).href} onFocus={e=>e.currentTarget.select()}/>}
-        <p className="source-page-note">The retained original, not an approved claim. Links require access to this memory space; they do not share your key. Text is not an original-file download.</p>
+        <p className="source-page-note">This page shows retained source material. Source links require access to this memory space and never share your key.</p>
+        {current.documents&&current.attachments&&documentSource&&<DocumentOriginal api={api} source={documentSource} episodeId={address.episodeId}/>}
         <section className="source-page-original" aria-label="Source original"><SourceContent text={current.original.content}/>{current.original.content===''&&<p>No retained text.</p>}</section>
         {current.documents&&current.original.documentIssue&&<p role="alert">Document attachments could not be verified for this source.</p>}
         {current.documents&&documentSource&&<SourceDocumentEvidence key={`document:${space}:${episodeId}`} api={api} source={documentSource} episodeId={address.episodeId}/>}

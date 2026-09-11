@@ -108,6 +108,22 @@ linked original/manifest, extracted text and source locators. Imports run one at
 a time, with pause taking effect after the current file. A confirmed receipt
 opens the source page or its extracted segments and table evidence.
 
+Newly imported documents expose a display filename in the source library and
+source page when it fits the server's 256-character metadata limit. Older
+records and longer labels keep the existing source fallback; document provenance
+still retains the complete extraction filename. Display names do not change
+source or attachment identities.
+
+For a source with verified document attachments, **Prepare original file**
+rechecks the source and extraction, downloads the original through the authenticated
+attachment route, verifies its byte count and SHA-256, and rechecks the source
+after the transfer. **Save original file** downloads those exact bytes with the
+extraction filename's safe basename. The browser limit is 100 MiB. Cancel, clear,
+refresh, source changes and connection changes discard pending work and release
+prepared object URLs. Files are offered as binary downloads, never rendered as
+active HTML; typed originals served as `application/octet-stream` remain supported.
+A downloaded local copy is independent of subsequent server retention changes.
+
 The queue belongs to the open Documents view. It does not persist across view
 changes, closing or reload, and does not represent a durable background job.
 Saved sources remain stored. Upload or authorization failures can be queued

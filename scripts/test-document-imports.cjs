@@ -12,7 +12,7 @@ before(async()=>{const engine=process.env.SCONE_BROWSER_ENGINE||'chromium';brows
 after(async()=>{await browser?.close();});
 async function fixture(t,{supported=true,mobile=false}={}){
  const html=fs.readFileSync(process.env.SCONE_DOCUMENTS_HTML||path.resolve(__dirname,'../dist/console.html'),'utf8').replaceAll('__SCONE_TOKEN__','import-fixture');
- const state={failRead:false,loseWrite:false,deny:false,hold:null},requests=[],uploads=new Map(),sources=new Map(),sourceKeys=new Map();
+ const state={failRead:false,loseWrite:false,deny:false,hold:null,holdDownload:null,corruptDownload:false},requests=[],uploads=new Map(),sources=new Map(),sourceKeys=new Map();
  const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,'http://fixture');
   if(url.pathname==='/memory'){res.setHeader('content-type','text/html');return res.end(html);}
@@ -38,6 +38,11 @@ async function fixture(t,{supported=true,mobile=false}={}){
     const evidence={original,manifest,filename,format:'txt',parser:'fixture-text',segments:[{locator:'line:1',text}]};sources.set(id,{episode,evidence});
     if(state.loseWrite){res.destroy();return;}return res.end(JSON.stringify(receipt));
    }
+  }
+  if(url.pathname.startsWith('/v1/attachments/')){
+   const stored=uploads.get(url.pathname.split('/').at(-1));if(!stored){res.writeHead(404);return res.end('{}');}
+   if(state.holdDownload)await state.holdDownload;
+   res.setHeader('content-type','application/octet-stream');return res.end(state.corruptDownload?Buffer.alloc(Buffer.byteLength(stored.text)):stored.text);
   }
   const match=url.pathname.match(/^\/v1\/episodes\/(\d+)(\/document)?$/);
   if(match&&sources.has(Number(match[1]))){if(match[2]&&state.failRead){res.writeHead(503);return res.end('{"error":"read failed"}');}return res.end(JSON.stringify(sources.get(Number(match[1]))[match[2]?'evidence':'episode']));}
@@ -77,4 +82,18 @@ test('unsupported parsers and excessive selections never upload; explicit denial
 });
 test('missing file capability never exposes import controls or probes format support',async t=>{
  const {page,requests}=await fixture(t,{supported:false});await page.getByRole('heading',{name:'Documents',exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:'Import documents',exact:true}).count(),0);assert.equal(requests.some(r=>r.path==='/v1/documents/formats'),false);
+});
+
+
+test('original downloads are byte-exact, cancellable, digest checked and revoked when cleared',async t=>{
+ const {page,q,state}=await fixture(t);const text='Original café <script>literal</script>';
+ await choose(q,file('café.txt',text));await start(q);await q.getByText('1 of 1 verified · 0 ready',{exact:true}).waitFor();
+ await page.evaluate(()=>{window.originalUrls={created:[],revoked:[]};const create=URL.createObjectURL.bind(URL),revoke=URL.revokeObjectURL.bind(URL);URL.createObjectURL=blob=>{const url=create(blob);window.originalUrls.created.push(url);return url;};URL.revokeObjectURL=url=>{window.originalUrls.revoked.push(url);return revoke(url);};});
+ await q.getByText('Download original file',{exact:true}).click();const original=q.getByRole('region',{name:'Original document download'});
+ await original.getByRole('button',{name:'Prepare original file',exact:true}).click();const save=original.getByRole('link',{name:'Save original file'});await save.waitFor();
+ const href=await save.getAttribute('href');assert.match(href,/^blob:/);
+ const received=page.waitForEvent('download');await save.click();const download=await received;assert.equal(download.suggestedFilename(),'café.txt');assert.equal(fs.readFileSync(await download.path(),'utf8'),text);
+ await original.getByRole('button',{name:'Clear original download'}).click();assert.equal(await save.count(),0);assert.ok((await page.evaluate(()=>window.originalUrls.revoked)).includes(href));
+ let release;state.holdDownload=new Promise(resolve=>{release=resolve;});await original.getByRole('button',{name:'Prepare original file',exact:true}).click();await original.getByText('Verifying and receiving the original file…',{exact:true}).waitFor();await original.getByRole('button',{name:'Cancel original download'}).click();release();state.holdDownload=null;assert.equal(await save.count(),0);
+ state.corruptDownload=true;await original.getByRole('button',{name:'Prepare original file',exact:true}).click();await original.getByRole('alert').filter({hasText:'digest'}).waitFor();assert.equal(await save.count(),0);
 });

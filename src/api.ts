@@ -1,3 +1,4 @@
+import {readDocumentOriginal,validateOriginalReference} from './memory/document-download.ts';
 import {exportAddress,readGraphExport,type GraphExportRequest,type GraphExportFile} from './memory/knowledge-export.ts';
 import {attachVoiceSocket,type VoiceEvents} from './conversations/voice/channel.ts';
 import {voiceSocketUrl} from './conversations/voice/wire.ts';
@@ -8,6 +9,7 @@ export interface ApiClient {
   image(attachment: ImageAttachment, signal?: AbortSignal): Promise<Blob>;
   uploadImage(file: File, signal?: AbortSignal): Promise<ImageAttachment>;
   uploadDocument(file: File, signal?: AbortSignal): Promise<ImageAttachment>;
+  documentOriginal(original:ImageAttachment,signal?:AbortSignal):Promise<Blob>;
   conversationStream(sid: string, requestId: string, after: number, signal: AbortSignal): Promise<ReadableStream<Uint8Array>>;
   voiceConnection(sid:string,format:{sampleRate:number;channels:number},events:VoiceEvents,signal:AbortSignal):ReturnType<typeof attachVoiceSocket>;
 }
@@ -57,6 +59,14 @@ export function createApiClient(key: string, unauthorized: () => void, base = ''
         await response.body?.cancel();throw Error('Invalid conversation stream response');
       }
       return response.body;
+    },
+    async documentOriginal(original,signal){
+      validateOriginalReference(original);
+      const active=signal?AbortSignal.any([signal,AbortSignal.timeout(60000)]):AbortSignal.timeout(60000);
+      active.throwIfAborted();
+      const response=await fetch(base+'/v1/attachments/'+original.attachment_id,{headers:{Authorization:'Bearer '+key},signal:active,cache:'no-store',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer'});
+      if(!response.ok){await response.body?.cancel();if(response.status===401)unauthorized();throw new ApiError(response.status,`Original download failed (${response.status}).`);}
+      return readDocumentOriginal(response,original,active);
     },
     async uploadDocument(file, signal) {
       if (!file.size || file.size > MAX_IMAGE_BYTES) throw Error('Document is empty or exceeds the upload byte limit.');
