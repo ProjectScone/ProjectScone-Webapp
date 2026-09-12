@@ -1,0 +1,9 @@
+.knowledge-inferences{padding:16px 20px;border:1px solid var(--line);border-radius:10px;background:var(--surface);margin:12px 0;font-size:13px}
+.knowledge-inferences>div:first-child,.knowledge-inferences nav{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.knowledge-inferences label{display:flex;align-items:center;gap:8px}
+.knowledge-inferences p,.knowledge-inference-evidence{line-height:1.65;overflow-wrap:anywhere}
+.knowledge-inference-list{list-style:none;padding:0;margin:8px 0}
+.knowledge-inference-list>li{border-top:1px solid var(--line);padding:12px 0}
+.knowledge-inference-evidence{margin:8px 0;font-size:12px;max-width:100%;min-width:0}
+.knowledge-inference-evidence ol,.knowledge-inference-evidence ul{padding-left:20px}
+.knowledge-inference-evidence summary,.knowledge-inferences summary{cursor:pointer;min-height:32px}

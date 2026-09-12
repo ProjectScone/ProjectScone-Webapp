@@ -26,7 +26,7 @@ function raw(base,path,headers={},method='GET') {
 }
 test('serves named SPA deep links, HEAD and ETags without embedding a key',async t=>{
   const {base}=await fixture(t);
-  for(const path of ['/','/memory','/memory/sources/123','/memory/sources/123/forget?space=alpha','/playground','/conversations/saved-session','/learn','/learn/how-it-works','/learn/graph-memory','/docs','/docs/quickstart']) {
+  for(const path of ['/','/memory','/memory/sources/123','/memory/sources/123/forget?space=alpha','/playground','/agents','/conversations/saved-session','/learn','/learn/how-it-works','/learn/graph-memory','/docs','/docs/quickstart']) {
     const response=await raw(base,path);assert.equal(response.status,200,path);assert.match(response.body,/<div id="root">/);assert.doesNotMatch(response.body,/__SCONE_TOKEN__/);
   }
   const response=await raw(base,'/memory');assert.ok(response.headers.etag);

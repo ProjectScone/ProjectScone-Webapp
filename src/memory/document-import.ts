@@ -1,11 +1,12 @@
 import {ApiError,type ApiClient,type ImageAttachment} from '../api.ts';
 import {documentBinding,parseDocumentEvidence,type DocumentEvidence,type DocumentSource} from './document-evidence.ts';
+import {parsePdfOcrCatalog,parsePdfOcrSelection,samePdfOcr,validatePdfOcr,type PdfOcrCatalog,type PdfOcrSelection} from './document-ocr.ts';
 
 export const MAX_QUEUE_FILES=20,MAX_QUEUE_BYTES=100*1024*1024;
 const MAX_FILE_BYTES=25*1024*1024;
 export interface DocumentFormat {available:boolean;parser:string;requires?:string}
-export interface DocumentFormats {maxInputBytes:number;formats:Map<string,DocumentFormat>}
-export interface ImportReceipt {episodeId:number;deduplicated:boolean;original:ImageAttachment;manifest:ImageAttachment;filename:string;format:string;segments:number}
+export interface DocumentFormats {maxInputBytes:number;formats:Map<string,DocumentFormat>;pdfOcr?:PdfOcrCatalog}
+export interface ImportReceipt {episodeId:number;deduplicated:boolean;original:ImageAttachment;manifest:ImageAttachment;filename:string;format:string;segments:number;pdfOcr?:PdfOcrSelection}
 export interface VerifiedImport {receipt:ImportReceipt;source:DocumentSource;evidence:DocumentEvidence}
 export type ImportPhase='uploading'|'indexing'|'verifying';
 export type ImportOutcome={status:'verified';verified:VerifiedImport}|{status:'unverified';receipt:ImportReceipt;error:string}|{status:'uncertain'|'failed';error:string};
@@ -27,7 +28,7 @@ export function parseDocumentFormats(value:unknown):DocumentFormats{
   const v=record(value);if(typeof v.available!=='boolean')throw Error('Invalid document availability.');
   formats.set(extension,{available:v.available,parser:text(v.parser,128),requires:v.requires===undefined?undefined:text(v.requires,1024)});
  }
- return {maxInputBytes,formats};
+ return {maxInputBytes,formats,pdfOcr:v.pdf_ocr===undefined?undefined:parsePdfOcrCatalog(v.pdf_ocr)};
 }
 export function validateDocumentSelection(files:readonly File[],catalog:DocumentFormats):void{
  if(files.length>MAX_QUEUE_FILES)throw Error(`Keep at most ${MAX_QUEUE_FILES} files in this queue.`);
@@ -41,11 +42,13 @@ export function validateDocumentSelection(files:readonly File[],catalog:Document
   if(!format.available)throw Error(`${file.name}: its parser is unavailable on the connected server.`);
  }
 }
-function parseReceipt(value:unknown,original:ImageAttachment,filename:string):ImportReceipt{
+export function parseReceipt(value:unknown,original:ImageAttachment,filename:string,expectedOcr?:PdfOcrSelection):ImportReceipt{
  const v=record(value),added=record(v.added),savedOriginal=attachment(v.original),manifest=attachment(v.manifest);
  sameAttachment(savedOriginal,original);
  if(v.filename!==filename||typeof added.deduplicated!=='boolean'||manifest.media_type!=='application/json')throw Error('Document receipt does not match this import.');
- return {episodeId:count(added.episode_id),deduplicated:added.deduplicated,original:savedOriginal,manifest,filename,format:text(v.format,64),segments:count(v.segments,20000)};
+ const pdfOcr=v.pdf_ocr===undefined?undefined:parsePdfOcrSelection(v.pdf_ocr);
+ if(!samePdfOcr(pdfOcr,expectedOcr))throw Error('Document receipt does not match the selected PDF OCR settings.');
+ return {episodeId:count(added.episode_id),deduplicated:added.deduplicated,original:savedOriginal,manifest,filename,format:text(v.format,64),segments:count(v.segments,20000),pdfOcr};
 }
 export async function verifyDocumentImport(api:ImportApi,receipt:ImportReceipt,signal:AbortSignal):Promise<VerifiedImport>{
  const active=AbortSignal.any([signal,AbortSignal.timeout(60000)]);active.throwIfAborted();
@@ -56,15 +59,17 @@ export async function verifyDocumentImport(api:ImportApi,receipt:ImportReceipt,s
  const source={content:episode.content,binding};
  const evidence=parseDocumentEvidence(await api.request<unknown>(`/v1/episodes/${receipt.episodeId}/document`,{signal:active,cache:'no-store',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer'}),source);
  if(evidence.filename!==receipt.filename||evidence.segments.length!==receipt.segments)throw Error('Saved extraction does not match this document receipt.');
+ if(!samePdfOcr(evidence.pdfOcr,receipt.pdfOcr))throw Error('Saved extraction does not match the selected PDF OCR settings.');
  active.throwIfAborted();return {receipt,source,evidence};
 }
-export async function importDocument(api:ImportApi,file:File,catalog:DocumentFormats,signal:AbortSignal,phase:(phase:ImportPhase)=>void):Promise<ImportOutcome>{
+export async function importDocument(api:ImportApi,file:File,catalog:DocumentFormats,signal:AbortSignal,phase:(phase:ImportPhase)=>void,pdfOcr?:PdfOcrSelection):Promise<ImportOutcome>{
  let indexing=false,receipt:ImportReceipt|undefined;
  try{
-  validateDocumentSelection([file],catalog);signal.throwIfAborted();phase('uploading');
+  const selected=pdfOcr===undefined?undefined:parsePdfOcrSelection(pdfOcr);
+  validateDocumentSelection([file],catalog);validatePdfOcr(file.name,catalog.pdfOcr,selected);signal.throwIfAborted();phase('uploading');
   const original=await api.uploadDocument(file,signal);signal.throwIfAborted();phase('indexing');indexing=true;
-  const result=await api.request<unknown>('/v1/documents',{method:'POST',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer',cache:'no-store',body:JSON.stringify({attachment_id:original.attachment_id,filename:file.name}),signal:AbortSignal.any([signal,AbortSignal.timeout(120000)])});
-  receipt=parseReceipt(result,original,file.name);signal.throwIfAborted();phase('verifying');
+  const result=await api.request<unknown>('/v1/documents',{method:'POST',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer',cache:'no-store',body:JSON.stringify({attachment_id:original.attachment_id,filename:file.name,...(selected?{pdf_ocr:selected}:{})}),signal:AbortSignal.any([signal,AbortSignal.timeout(120000)])});
+  receipt=parseReceipt(result,original,file.name,selected);signal.throwIfAborted();phase('verifying');
   return {status:'verified',verified:await verifyDocumentImport(api,receipt,signal)};
  }catch(error){
   if(receipt)return {status:'unverified',receipt,error:message(error)};

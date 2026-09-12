@@ -3,10 +3,11 @@ const assert=require('node:assert/strict');
 const http=require('node:http');
 const fs=require('node:fs');
 const path=require('node:path');
-const {chromium}=require(process.env.SCONE_PLAYWRIGHT_MODULE||'playwright');
+const engines=require(process.env.SCONE_PLAYWRIGHT_MODULE||'playwright');
+const browserEngine=process.env.SCONE_BROWSER_ENGINE||'chromium';
 const contract=require('../tests/fixtures/http-capabilities.json').python;
 let browser;
-before(async()=>{browser=await chromium.launch({headless:true,executablePath:process.env.SCONE_BROWSER_PATH});});
+before(async()=>{browser=await engines[browserEngine].launch({headless:true,executablePath:process.env.SCONE_BROWSER_PATH});});
 after(async()=>{await browser?.close();});
 async function fixture(t,{mobile=false,supported=true}={}){
   const html=fs.readFileSync(path.resolve(__dirname,'../dist/console.html'),'utf8').replaceAll('__SCONE_TOKEN__','filter-fixture');

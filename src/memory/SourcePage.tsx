@@ -12,6 +12,7 @@ import {SourceImageUnderstanding} from './SourceImageUnderstanding';
 import {sourceUnderstandingImages} from './image-understanding';
 import {DocumentOriginal} from './DocumentOriginal';
 import {SourceDocumentEvidence} from './SourceDocumentEvidence';
+import {SourceDocumentOcr} from './SourceDocumentOcr';
 import {documentBinding,type DocumentBinding} from './document-evidence';
 import {SourceProvenance} from './SourceProvenance';
 
@@ -74,6 +75,7 @@ export function SourcePage({api,enabled}:{api:ApiClient;enabled:boolean}){
         <section className="source-page-original" aria-label="Source original"><SourceContent text={current.original.content}/>{current.original.content===''&&<p>No retained text.</p>}</section>
         {current.documents&&current.original.documentIssue&&<p role="alert">Document attachments could not be verified for this source.</p>}
         {current.documents&&documentSource&&<SourceDocumentEvidence key={`document:${space}:${episodeId}`} api={api} source={documentSource} episodeId={address.episodeId}/>}
+        {current.documents&&documentSource?.binding.format==='pdf'&&<SourceDocumentOcr key={`ocr:${space}:${episodeId}`} api={api} source={documentSource} episodeId={address.episodeId}/>}
         {current.provenance&&provenanceSource&&<SourceProvenance api={api} source={provenanceSource}/>}
         {current.attachments&&<SourceImages api={api} episodeId={address.episodeId}/>}<SourceImageUnderstanding key={`${address.space}:${address.episodeId}`} api={api} episodeId={address.episodeId} space={address.space} images={current.original.images} available={current.understand===true} canSetup={current.models===true}/><footer>{current.forget&&<Link to={`/memory/sources/${address.episodeId}/forget?${new URLSearchParams({space:address.space})}`}>Review source removal</Link>}<span>Episode #{episodeId} · {space}</span><button className="btn quiet small" onClick={retry}>Refresh source</button></footer>
       </article>}

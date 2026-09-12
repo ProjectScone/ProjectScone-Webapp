@@ -6,6 +6,7 @@ import { PlaygroundPage } from './playground/PlaygroundPage';
 import { MemoryPage } from './memory/MemoryPage';
 import {SourcePage} from './memory/SourcePage';
 import {SourceRemovalPage} from './memory/SourceRemovalPage';
+import {AgentsPage} from './agents/AgentsPage';
 import { ConversationPage } from './conversations/ConversationPage';
 import { Modal } from './components/Modal';
 import { LearnPage } from './learn/LearnPage';
@@ -39,6 +40,7 @@ export function App({ initialKey }: { initialKey: string }) {
     <Routes>
       <Route path="/" element={<Navigate to="/memory" replace />} />
       <Route path="/memory" element={key ? <MemoryPage key={epoch} api={api} /> : <main id="main" className="connection-empty"><div className="eyebrow">Your memory workspace</div><h1>Connect to Scone</h1><p>This app reads memory from <code>{location.origin}</code>. No memory is available until this server accepts your space key.</p><button className="primary" onClick={() => setAuth(true)}>Set up memory connection</button><p className="muted">The single-key preview connects automatically after reload. For a multi-space server, its administrator supplies the Scone space key.</p></main>} />
+      <Route path="/agents" element={<AgentsPage key={epoch} api={api} enabled={Boolean(key)}/>} />
       <Route path="/playground" element={<PlaygroundPage key={epoch} api={api} enabled={Boolean(key)} />} />
       <Route path="/memory/sources/:id/forget" element={<SourceRemovalPage key={epoch} api={api} enabled={Boolean(key)}/>} />
       <Route path="/memory/sources/:id" element={<SourcePage key={epoch} api={api} enabled={Boolean(key)}/>} />

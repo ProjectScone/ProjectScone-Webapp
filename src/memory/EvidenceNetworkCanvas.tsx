@@ -66,7 +66,7 @@ export function EvidenceNetworkCanvas({nodes,edges,groups,groupColors,selectedNo
         {paths.map(({edge,path})=>{
           const chosen=selectedEdge===edge.id,incident=edge.source===active||edge.target===active;
           return <g key={edge.id} data-evidence-edge={edge.id} className="en-edge" data-selected={chosen} data-muted={!!active&&!incident&&!chosen}>
-            <path d={path} className="en-edge-line" stroke={chosen?'#315fd0':edge.kind==='relation'&&groupColors?colors.get(edge.source)??'#8294ad':'#8294ad'} strokeWidth={(chosen?2.5:incident?1.7:1)/camera.zoom} strokeDasharray={['returned','chunked_into','mentions','asserts'].includes(edge.kind)?`${4/camera.zoom} ${4/camera.zoom}`:undefined} markerEnd={chosen?'url(#en-arrow-active)':'url(#en-arrow)'}/>
+            <path d={path} className="en-edge-line" stroke={chosen?'#315fd0':edge.kind==='relation'&&groupColors?colors.get(edge.source)??'#8294ad':'#8294ad'} strokeWidth={(chosen?2.5:incident?1.7:1)/camera.zoom} strokeDasharray={['returned','chunked_into','mentions','asserts','implied'].includes(edge.kind)?`${4/camera.zoom} ${4/camera.zoom}`:undefined} markerEnd={chosen?'url(#en-arrow-active)':'url(#en-arrow)'}/>
             <path d={path} className="en-edge-hit" strokeWidth={13/camera.zoom} role="button" tabIndex={-1} aria-label={`${evidenceEdgeLabel(edge)}: ${nodes.find(node=>node.id===edge.source)?.label} → ${nodes.find(node=>node.id===edge.target)?.label}`} onClick={event=>{event.stopPropagation();selectEdge(edge.id);}}><title>{evidenceEdgeLabel(edge)}</title></path>
           </g>;
         })}
@@ -82,7 +82,7 @@ export function EvidenceNetworkCanvas({nodes,edges,groups,groupColors,selectedNo
       {(labels?placed:placed.filter(label=>label.id===active)).map(label=><g key={label.id} className="en-node-label" data-active={label.id===active} pointerEvents="none"><rect x={label.x} y={label.y} width={label.width} height={label.height} rx="5"/><text x={label.x+6} y={label.y+15}>{label.text}</text></g>)}
     </svg>
     {!nodes.length&&<div className="en-empty"><strong>No records in this view</strong><p>Try the evidence view or a different group. Missing links are not inferred.</p></div>}
-    <div className="en-canvas-note">{nodes.length} nodes · {edges.length} recorded links<span>Drag to move · scroll to zoom</span></div>
+    <div className="en-canvas-note">{nodes.length} nodes · {edges.filter(e=>e.kind!=='implied').length} recorded links{edges.some(e=>e.kind==='implied')?` · ${edges.filter(e=>e.kind==='implied').length} inferred`:''}<span>Drag to move · scroll to zoom</span></div>
     <div className="en-camera" aria-label="Graph camera"><button type="button" onClick={()=>zoom(.8)} aria-label="Zoom out">−</button><output aria-label="Graph zoom">{Math.round(camera.zoom*100)}%</output><button type="button" onClick={()=>zoom(1.25)} aria-label="Zoom in">+</button><button type="button" onClick={()=>setCamera(fitEvidenceCamera(points,size))}>Fit graph</button><button type="button" onClick={()=>{reset();setCamera(fitEvidenceCamera(points,size));}}>Reset</button></div>
   </div>;
 }

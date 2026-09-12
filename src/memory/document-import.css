@@ -23,3 +23,5 @@
 .import-evidence nav{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px}
 .import-evidence .import-digest{font:11px/1.6 ui-monospace,SFMono-Regular,monospace;overflow-wrap:anywhere}
 @media(max-width:600px){.document-import{padding:16px}.document-import header{align-items:flex-start}.import-actions{align-items:stretch;flex-direction:column}.import-row-heading{align-items:flex-start;flex-direction:column;gap:8px}.import-picker{padding:12px}.import-row{padding:12px}}
+
+.import-ocr-controls{display:flex;flex-wrap:wrap;gap:12px;margin:14px 0}.import-ocr-controls label{display:grid;gap:7px;font-size:12px;flex:1 1 220px;min-width:0}.import-ocr-controls select{font:inherit;font-size:13px;width:100%;min-width:0;padding:9px;border:1px solid var(--line);border-radius:6px;color:var(--ink);background:var(--surface)}

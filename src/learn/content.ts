@@ -72,6 +72,11 @@ Scone’s fact ledger can retain superseded statements with validity boundaries.
 Python hosts advertising **facts.links** support typed extends, derived_from, contradicts and supports links. The fact-detail API returns a fact, its links and source episode IDs; dependency links are checked for cycles and cross-space targets are refused. The graph endpoint includes stored claim-to-claim links.
 
 Rust parity and complete relationship inspection workflows remain unfinished. Inspect the link’s recorded type; a generic line or visual grouping does not establish an extension.`},
+      {id:'inferred-connections',title:'Inspect relationships that follow from rules',body:`On configured Python hosts, **Memory → Knowledge → Inferred relationships** shows connections produced by explicit inverse, symmetric or transitive predicate rules. Open **Rule, periods and premises** to see the rule, every retained validity period and the supporting relationship IDs. **Inspect supporting claims** reads the underlying evidence, including premises beyond the selected entity’s direct relationships.
+
+Enable **Show dashed inferences on map** to draw these connections alongside recorded relationships. Inferred edges keep their own identities and labels. The toggle resets when the graph changes. Counts and search-limit notices describe the returned inference set; alternate routes and other periods may be omitted by the bounded search. Recorded path search, communities and exports retain their existing behavior.
+
+These rule-derived connections are computed views. They do not create or approve a claim in the ledger. Model-generated derivation proposals have a separate review path.`},
       {id:'derivations',title:'Derivations: an inference names its premises',body:`Several statements can suggest a new claim, but the inference can still be wrong. Python’s native derivation operation records named premises and an inferred origin. Those links let you inspect the basis of the claim; they do not prove its conclusion.
 
 **Proposed** derived claims require approval before they become accepted claims. An explicit authorized API assertion can create an **active** inferred claim without a separate review decision; do not mistake that for a human approval. The origin label alone does not prove that supporting links were stored.
