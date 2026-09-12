@@ -1,7 +1,7 @@
 import type {QueryEvidence,QueryEvidenceNode,QueryEvidenceEdge} from './query-evidence.ts';
 
 export interface EvidenceGroup {id:string;label:string;nodeIds:string[];isolated:boolean}
-export interface EvidenceGroups {method:'label_propagation'|'components'|'unlinked';groups:EvidenceGroup[]}
+export interface EvidenceGroups {method:'label_propagation'|'components'|'unlinked'|'computed';groups:EvidenceGroup[]}
 export interface EvidencePoint {x:number;y:number}
 export interface EvidenceCamera extends EvidencePoint {zoom:number}
 export interface EvidenceSize {width:number;height:number}

@@ -99,6 +99,45 @@ page. No delete controls or unsupported write operations are inferred from the
 read-only inventory capability. Older servers without `episodes.list` do not
 show the section or receive inventory requests.
 
+When `documents.files`, `documents.provenance`, `episodes.attachments` and
+`episodes.read` are all advertised, **Import documents** opens a file queue.
+It discovers installed formats and the server's file-size limit before allowing
+selection. Up to 20 files and 100 MiB can be queued; each file uploads its original
+bytes, indexes using its selected filename, then verifies the source identity,
+linked original/manifest, extracted text and source locators. Imports run one at
+a time, with pause taking effect after the current file. A confirmed receipt
+opens the source page or its extracted segments and table evidence.
+
+Newly imported documents expose a display filename in the source library and
+source page when it fits the server's 256-character metadata limit. Older
+records and longer labels keep the existing source fallback; document provenance
+still retains the complete extraction filename. Display names do not change
+source or attachment identities.
+
+For a source with verified document attachments, **Prepare original file**
+rechecks the source and extraction, downloads the original through the authenticated
+attachment route, verifies its byte count and SHA-256, and rechecks the source
+after the transfer. **Save original file** downloads those exact bytes with the
+extraction filename's safe basename. The browser limit is 100 MiB. Cancel, clear,
+refresh, source changes and connection changes discard pending work and release
+prepared object URLs. Files are offered as binary downloads, never rendered as
+active HTML; typed originals served as `application/octet-stream` remain supported.
+A downloaded local copy is independent of subsequent server retention changes.
+
+The queue belongs to the open Documents view. It does not persist across view
+changes, closing or reload, and does not represent a durable background job.
+Saved sources remain stored. Upload or authorization failures can be queued
+again; ambiguous indexing outcomes require checking the library first and have
+no automatic write retry. A saved source whose verification failed retains its
+ID for an explicit read-only retry. Availability describes parser dependencies,
+not whether a particular file is valid. PDF imports use embedded text; scanned
+PDF OCR and parser settings are not part of this upload control.
+
+After building, `node --test scripts/test-document-imports.cjs` verifies the
+packaged queue, pause, failure/retry, capability gating and mobile layout against
+an isolated HTTP fixture. It accepts `SCONE_DOCUMENTS_HTML`,
+`SCONE_PLAYWRIGHT_MODULE`, `SCONE_BROWSER_ENGINE` and `SCONE_BROWSER_PATH`.
+
 The browser boundary suite is `scripts/test-documents.cjs`, with
 `SCONE_DOCUMENTS_HTML` pointing to the isolated packaged artifact above.
 `scripts/test-conversations-native.cjs` also covers Documents pagination, import,
@@ -106,6 +145,121 @@ literal readback, original images and cross-space denial against a disposable
 Python API service with a separate UI host. Neither suite uses the live memory database.
 
 ## Current boundaries
+
+### Knowledge workspace
+
+Retained source pages also offer Follow this source’s evidence when the server
+advertises `graph.sources`. An explicit read follows sections and stored chunks
+into quoted claims and their named entities; text-only entity mentions remain
+separate. Selecting a section, chunk, quote or mention opens its exact original
+span. The UI checks the content SHA-256, source identity, read consistency and
+UTF-8 boundaries before displaying provenance. Repeated quotes disclose their
+occurrence count and identify the first span. Chunk/claim limits and graph-read
+limits remain visible, and all returned lists page in groups of 20. Refresh,
+connection changes and cancellation discard old provenance. The source original
+remains available independently of this optional capability.
+
+The Memory navigation includes Knowledge when the server advertises
+`graph.knowledge`. This page reads the space's recorded entity graph and offers
+an entity directory, an interactive map, and current, history, proposed and
+excluded-inclusive views. `entities.read` independently enables inspection of
+incoming/outgoing relationships, literal values and supporting claims.
+
+`graph.knowledge_paging` adds next/previous navigation through the entity
+ranking, with at most 150 entities on each page. Pages share the first read's
+instant, projection identity and revision; changed snapshots, repeated entities,
+cursor loops and incomplete page contracts are rejected. The map shows only
+relationships between entities on its current page. Inspection and connection
+search can reach beyond it. Refresh, mode, community settings and connection
+changes restart paging and discard old selections. Servers without the paging
+capability retain the bounded first view.
+
+`graph.knowledge_seeds` independently enables Explore around entities. Choose up
+to 24 starting entities from the map or verified whole-space search, then read
+their neighborhood with an entity limit and hub degree cutoff. Connections are
+followed in both directions by default; high-degree hubs are shown but not expanded unless
+explicitly selected as starting entities. The response must preserve the
+requested seeds, cutoff, snapshot and known identities/support. Partial reads,
+entities outside the walk and skipped hubs remain explicit. The canvas draws at
+most 150 entities and 1,000 relationships; a directory pages through every
+returned entity in groups of 20 and can bring an off-map selection into view.
+Inspection reuses the main claim/source inspector. Draft changes, clearing and
+main graph changes discard obsolete results and neighborhood-owned inspection.
+
+With `graph.knowledge_walk`, the same panel adds incoming/outgoing/both direction
+and a limit of 1–8 steps or no step limit. Incoming follows object to subject;
+arrows always preserve the original subject-to-object claim. The directory
+shows each entity's distance from the nearest start. Responses must match the
+requested direction/depth and include a directed predecessor for each step;
+provable shortcuts cannot be reported as longer distances. Hidden full-read hub
+degree is respected rather than guessed from displayed edges. Capability changes
+clear walk-owned results and inspection. Older servers receive no direction or
+step parameters and do not show distance labels.
+
+After `pnpm build`, `node --test scripts/test-knowledge-walk.cjs` exercises the
+packaged controls against an isolated read-only HTTP fixture. Set
+`SCONE_PLAYWRIGHT_MODULE`, `SCONE_BROWSER_ENGINE` and `SCONE_BROWSER_PATH` when
+using a separately provisioned Playwright/browser installation.
+
+Coverage notices retain backend read limits. The map draws at most 1,000 of the
+returned relationships and discloses that display limit; inspection retains up
+to the backend's 50,000 supporting claims, shown in pages of 50. Source links
+require the currently verified space. Inspection rejects a changed graph
+revision, and changing connection, mode or refreshing revokes old selections.
+
+When `graph.report` is available, Show communities requests the backend's
+computed analysis. Community colors and filters retain stable group identities;
+the directory and map show only the selected group's returned members. The UI
+shows visible versus whole-community sizes, analysis limits, and whether bridge
+scores use sampling. Entity inspection adds degree, PageRank, bridge and
+participation scores. These measures describe graph structure, not claim
+reliability. Entities without returned analysis are labeled separately.
+When the server returns resolution metadata, the map can request any community
+resolution above zero through 10 and verifies the setting used in the response.
+
+Explore a knowledge report explicitly computes a report over the returned claim
+view, including entities outside the map. Reports show central and bridging
+entities, cross-community connections with claim IDs, suggested questions and
+paged communities. Resolution and optional degree-percentile hub exclusion
+(50–100) control the analysis; excluded hubs remain inspectable in a paged list.
+Entity inspection is independently gated and connection selections filter the
+supporting records. Reports retain sampling and partial-read disclosures and
+verify space, projection, time, settings and known entity identities. Changing
+settings, refreshing or cancelling discards old report results and inspection.
+
+With `graph.timeline`, selecting an entity offers a valid-time timeline across
+outgoing, incoming and value lanes. This history includes closed, proposed and
+excluded records independently of the map's claim filter. Choose a UTC moment
+to mark which records count then, inspect exact intervals and verified quotes,
+follow supersession or stored claim links, and open retained sources. Linked
+records reveal their lane and page. The UI checks entity keys, revision, time,
+validity markers, lane membership and requested limits; it permits the history
+projection's digest to differ from the current-view digest. Returned records
+page in groups of 20, with capped and stale reads disclosed. Entity, graph and
+request changes revoke old timeline evidence.
+
+With `graph.path` and `entities.read`, Find a connection searches entities across
+the space, including those outside the initial map. Choose exact endpoints and
+hop, route and hub limits to inspect shortest routes from the backend. Each hop
+preserves the recorded relationship's direction and exposes its supporting
+claims; inspection filters records to that hop and can open retained sources.
+Path/search responses must match the displayed space, projection revision and
+time. Changing endpoints or limits discards stale route results. Partial reads,
+excluded intermediate hubs and route limits remain visible; a limited search
+cannot establish that no connection exists.
+
+With `graph.export`, Export knowledge prepares authenticated JSON, GraphML,
+Cypher, CSV ZIP, JSON-LD or Obsidian ZIP files. Exports cover the selected claim
+view across the space; map search, community selection and drawing caps do not
+narrow their contents. The browser verifies space, projection digest/revision,
+status, timestamp, media type and truncation headers before offering a file.
+Decoded bytes are bounded to 100 MiB. Redirects are rejected; cancellation,
+refresh, format and connection changes revoke pending or ready downloads.
+Partial-export metadata stays in the native file and is disclosed in the UI.
+
+This is a recorded-knowledge view, separate from query evidence. Broader graph
+editing and the remaining reference capabilities are still follow-up work.
+Availability follows each native server's capabilities.
 
 ### Three-dimensional evidence map
 
@@ -170,6 +324,17 @@ or filter immediately removes the previous results and image previews; obsolete
 requests are cancelled and late replies ignored. Failed queries expose **Retry
 search** and do not retain another query's error. Requests have a 10-second
 deadline. Editing the input alone does not submit a search; press Search or Enter.
+
+When `recall.graph_boost` is advertised, Search offers **Use entity-assisted
+retrieval**, off by default. It adds passages naming entities connected to the
+submitted query while retaining its metadata, tag and time filters. The result
+lists considered query entities and neighbors separately from passage support;
+**why this** includes the entity lane's rank when reported. Missing or malformed
+expansion acknowledgements are rejected, and limited/unavailable retrieval stays
+visible even on empty results. Changing this option cancels obsolete requests;
+late replies cannot restore the previous expansion. A selected option that loses
+capability support pauses the search until explicitly turned off. A new memory
+connection starts with the option off.
 
 The Review inbox groups recorded subjects, filters by origin and checked quotes,
 and renders 25 cards per page. Sources are loaded only when expanded. Bulk
@@ -273,6 +438,26 @@ The graph renders stored relationships only. Depth is a spatial layout, not a
 3D simulation or confidence value. API connectivity, observed agent events and
 verified host capture are distinct. Current snapshots are bounded; lossless
 event replay and current Codex App capture have not been verified.
+
+## Source removal
+
+Source pages on servers advertising `episodes.forget` link to an impact preview
+at `/memory/sources/:id/forget?space=...`. The page checks the connected space,
+shows chunks and attachment ownership, and lists retained citing claims and
+links before requiring explicit confirmation. Claims, links and their quotes
+remain; shared attachments, downloaded copies and backups can remain too.
+
+After an unconfirmed response, Check removal status only reads. Pending cleanup
+can be resumed with a fresh confirmation; a completed tombstone confirms removal
+without fabricating the original receipt counts. The app does not automatically
+retry DELETE. HTTP transports may replay an idempotent DELETE after a broken
+connection, so the backend must retain and honor its durable cleanup identity.
+The preview is an observation rather than a lock against intervening writes.
+
+`scripts/test-source-removal.cjs` checks the packaged UI with the same local
+Playwright/browser environment variables as the other browser suites. It covers
+confirmation, paged impact, interrupted responses, explicit resumption, read-role
+denial, invalid receipts, capability/space checks, navigation and mobile layout.
 
 ## Contributing, license and citation
 

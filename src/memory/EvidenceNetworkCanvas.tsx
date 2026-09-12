@@ -5,14 +5,14 @@ import {fitEvidenceCamera,layoutEvidenceNetwork,placeEvidenceLabels,zoomEvidence
 export const GROUP_COLORS=['#3979ca','#c5772d','#8d65b7','#26917d','#c25b79','#77923a','#546bb2','#9c704f'];
 const KIND_COLORS={query:'#335987',chunk:'#628baf',episode:'#32907a',claim:'#8b62b1',concept:'#4389c9'};
 
-export function EvidenceNetworkCanvas({nodes,edges,groups,groupColors,selectedNode,selectedEdge,selectNode,selectEdge,reset,labels=true}:{
+export function EvidenceNetworkCanvas({nodes,edges,groups,groupColors,selectedNode,selectedEdge,selectNode,selectEdge,reset,labels=true,positions}:{
   nodes:QueryEvidenceNode[];edges:QueryEvidenceEdge[];groups?:EvidenceGroups;groupColors:boolean;selectedNode:string|null;selectedEdge:string|null;
-  selectNode:(id:string)=>void;selectEdge:(id:string)=>void;reset:()=>void;labels?:boolean;
+  selectNode:(id:string)=>void;selectEdge:(id:string)=>void;reset:()=>void;labels?:boolean;positions?:Map<string,EvidencePoint>;
 }){
   const svg=useRef<SVGSVGElement>(null),drag=useRef<{x:number;y:number;camera:EvidenceCamera}|null>(null);
   const [size,setSize]=useState({width:700,height:500}),[camera,setCamera]=useState<EvidenceCamera>({x:0,y:0,zoom:1});
   const [hovered,setHovered]=useState<string|null>(null);
-  const points=useMemo(()=>layoutEvidenceNetwork(nodes,edges,groups),[nodes,edges,groups]);
+  const points=useMemo(()=>positions??layoutEvidenceNetwork(nodes,edges,groups),[nodes,edges,groups,positions]);
   const colors=useMemo(()=>{
     const result=new Map<string,string>();
     groups?.groups.forEach((group,index)=>group.nodeIds.forEach(id=>result.set(id,group.isolated?'#8995a7':GROUP_COLORS[index%GROUP_COLORS.length])));

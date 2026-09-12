@@ -1,5 +1,6 @@
 import {useEffect, useState} from 'react';
 import type {ApiClient, RecallResponse} from './types';
+import {readRecallEntities} from './recall-entities';
 
 interface SearchReceipt {
   api: ApiClient;
@@ -20,7 +21,7 @@ export function useSearchRecall(api: ApiClient, query: string, enabled: boolean)
     setReceipt(null);
     api.request<RecallResponse>('/v1/recall?' + query, {
       signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]),
-    }).then(
+    }).then(data=>({...data,entities:readRecallEntities(data,new URLSearchParams(query).get('graph_boost')==='true')})).then(
       data => { if (!controller.signal.aborted) setReceipt({api, query, attempt, data}); },
       error => { if (!controller.signal.aborted) setReceipt({api, query, attempt,
         error: error instanceof Error ? error.message : 'Search unavailable. Try again.'}); },

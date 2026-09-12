@@ -1,10 +1,15 @@
+import {readDocumentOriginal,validateOriginalReference} from './memory/document-download.ts';
+import {exportAddress,readGraphExport,type GraphExportRequest,type GraphExportFile} from './memory/knowledge-export.ts';
 import {attachVoiceSocket,type VoiceEvents} from './conversations/voice/channel.ts';
 import {voiceSocketUrl} from './conversations/voice/wire.ts';
 
 export interface ApiClient {
+  graphExport(request:GraphExportRequest,signal?:AbortSignal):Promise<GraphExportFile>;
   request<T>(path: string, options?: RequestInit): Promise<T>;
   image(attachment: ImageAttachment, signal?: AbortSignal): Promise<Blob>;
   uploadImage(file: File, signal?: AbortSignal): Promise<ImageAttachment>;
+  uploadDocument(file: File, signal?: AbortSignal): Promise<ImageAttachment>;
+  documentOriginal(original:ImageAttachment,signal?:AbortSignal):Promise<Blob>;
   conversationStream(sid: string, requestId: string, after: number, signal: AbortSignal): Promise<ReadableStream<Uint8Array>>;
   voiceConnection(sid:string,format:{sampleRate:number;channels:number},events:VoiceEvents,signal:AbortSignal):ReturnType<typeof attachVoiceSocket>;
 }
@@ -21,6 +26,17 @@ export class ApiError extends Error {
 
 export function createApiClient(key: string, unauthorized: () => void, base = ''): ApiClient {
   return {
+    async graphExport(request,signal){
+      const path=exportAddress(request),active=signal?AbortSignal.any([signal,AbortSignal.timeout(60000)]):AbortSignal.timeout(60000);
+      active.throwIfAborted();
+      const response=await fetch(base+path,{method:'GET',headers:{Authorization:'Bearer '+key},signal:active,cache:'no-store',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer'});
+      if(!response.ok){
+        await response.body?.cancel();
+        if(response.status===401)unauthorized();
+        throw new ApiError(response.status,`Export request failed (${response.status}).`);
+      }
+      return readGraphExport(response,request,active);
+    },
     voiceConnection(sid,format,events,signal){
       signal.throwIfAborted();
       const url=voiceSocketUrl(sid,base||window.location.origin);
@@ -43,6 +59,39 @@ export function createApiClient(key: string, unauthorized: () => void, base = ''
         await response.body?.cancel();throw Error('Invalid conversation stream response');
       }
       return response.body;
+    },
+    async documentOriginal(original,signal){
+      validateOriginalReference(original);
+      const active=signal?AbortSignal.any([signal,AbortSignal.timeout(60000)]):AbortSignal.timeout(60000);
+      active.throwIfAborted();
+      const response=await fetch(base+'/v1/attachments/'+original.attachment_id,{headers:{Authorization:'Bearer '+key},signal:active,cache:'no-store',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer'});
+      if(!response.ok){await response.body?.cancel();if(response.status===401)unauthorized();throw new ApiError(response.status,`Original download failed (${response.status}).`);}
+      return readDocumentOriginal(response,original,active);
+    },
+    async uploadDocument(file, signal) {
+      if (!file.size || file.size > MAX_IMAGE_BYTES) throw Error('Document is empty or exceeds the upload byte limit.');
+      const active = signal ? AbortSignal.any([signal, AbortSignal.timeout(60000)]) : AbortSignal.timeout(60000);
+      active.throwIfAborted();
+      const raw = await file.arrayBuffer();
+      const digest = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', raw)), b => b.toString(16).padStart(2, '0')).join('');
+      active.throwIfAborted();
+      const response = await fetch(base + '/v1/attachments', {
+        method: 'POST', body: raw, signal: active,
+        headers: {Authorization: 'Bearer ' + key, 'Content-Type': 'application/octet-stream'},
+        cache: 'no-store', redirect: 'error', credentials: 'omit', referrerPolicy: 'no-referrer',
+      });
+      if (!response.ok) {
+        await response.body?.cancel();
+        if (response.status === 401) unauthorized();
+        throw new ApiError(response.status, `Document upload failed (${response.status}).`);
+      }
+      const value: unknown = await response.json();
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error('Invalid document upload receipt.');
+      const receipt = value as Record<string, unknown>;
+      if (receipt.attachment_id !== digest || receipt.bytes !== raw.byteLength || raw.byteLength !== file.size
+        || typeof receipt.media_type !== 'string' || !receipt.media_type || receipt.media_type.length > 256)
+        throw Error('Document upload receipt does not match the selected bytes.');
+      return {attachment_id: digest, media_type: receipt.media_type, bytes: raw.byteLength};
     },
     async uploadImage(file: File, signal?: AbortSignal): Promise<ImageAttachment> {
       if (!PREVIEW_TYPES.has(file.type)) throw Error('Choose a PNG, JPEG, GIF or WebP image');

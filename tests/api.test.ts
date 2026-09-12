@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { createApiClient, ApiError } from '../src/api.ts';
 import { createHash } from 'node:crypto';
 
-for(const operation of ['request','upload','image','stream'] as const)test(`a ${operation} permission denial preserves credentials but an invalid key expires them`,async()=>{
+for(const operation of ['request','upload','document','original','image','stream','export'] as const)test(`a ${operation} permission denial preserves credentials but an invalid key expires them`,async()=>{
   let status=403,expired=0;
   const server=createServer((req,res)=>{
     assert.equal(req.headers.authorization,'Bearer reader');
@@ -17,7 +17,10 @@ for(const operation of ['request','upload','image','stream'] as const)test(`a ${
   const client=createApiClient('reader',()=>{expired++;},`http://127.0.0.1:${address.port}`);
   const attempt=()=>operation==='request'?client.request('/v1/episodes',{method:'POST',body:'{"content":"denied"}'}):
     operation==='upload'?client.uploadImage(new File(['opaque fixture'],'test.png',{type:'image/png'})):
+    operation==='document'?client.uploadDocument(new File(['document fixture'],'test.csv')):
+    operation==='original'?client.documentOriginal({attachment_id:'a'.repeat(64),media_type:'application/pdf',bytes:1}):
     operation==='image'?client.image({attachment_id:'a'.repeat(64),media_type:'image/png',bytes:1}):
+    operation==='export'?client.graphExport({format:'json',space:'alpha',status:'current',asOf:'2026-09-11T12:00:00Z',digest:'a'.repeat(64),revision:1}):
     client.conversationStream('session','turn',0,new AbortController().signal);
   try{
     await assert.rejects(attempt(),e=>e instanceof ApiError&&e.status===403);
@@ -126,4 +129,27 @@ test('image uploads send exact bytes and validate the receipt before linking', a
     assert.equal(calls,1);
     bad=true;await assert.rejects(client.uploadImage(file),/receipt|digest/i);
   } finally {server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}
+});
+test('graph exports authenticate a fixed native route and reject redirects',async()=>{
+ const request={format:'json' as const,space:'alpha',status:'current' as const,asOf:'2026-09-11T12:00:00Z',digest:'a'.repeat(64),revision:3};let redirect=false,calls=0;
+ const server=createServer((req,res)=>{calls++;assert.equal(req.method,'GET');assert.equal(req.headers.authorization,'Bearer export-key');const url=new URL(req.url!,'http://local');assert.equal(url.pathname,'/v1/graph/export');assert.equal(url.searchParams.get('format'),'json');assert.equal(url.searchParams.get('as_of'),request.asOf);
+  if(redirect){res.writeHead(302,{location:'/unexpected'});return res.end();}
+  res.writeHead(200,{'content-type':'application/json','x-scone-space':'alpha','x-scone-status':'current','x-scone-as-of':request.asOf,'x-scone-projection-digest':request.digest,'x-scone-projection-revision':'3','x-scone-truncated':'false'});res.end('{"nodes":[]}');
+ });
+ await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));const address=server.address();if(!address||typeof address==='string')throw Error('No local address');
+ const api=createApiClient('export-key',()=>{},`http://127.0.0.1:${address.port}`);
+ try{const file=await api.graphExport(request);assert.equal(await file.blob.text(),'{"nodes":[]}');redirect=true;await assert.rejects(api.graphExport(request));assert.equal(calls,2);}finally{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}
+});
+
+
+test('original-file download authenticates a fixed attachment path and refuses redirects',async()=>{
+ const bytes=Buffer.from('exact original file'),attachment_id=createHash('sha256').update(bytes).digest('hex');let redirect=false,calls=0;
+ const server=createServer((req,res)=>{calls++;assert.equal(req.headers.authorization,'Bearer original-key');assert.equal(req.method,'GET');assert.equal(req.url,'/v1/attachments/'+attachment_id);
+  if(redirect){res.writeHead(307,{location:'/unexpected'});return res.end();}
+  res.writeHead(200,{'content-type':'application/pdf'});res.end(bytes);
+ });
+ await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));const address=server.address();if(!address||typeof address==='string')throw Error('No address');
+ const api=createApiClient('original-key',()=>{},`http://127.0.0.1:${address.port}`),original={attachment_id,bytes:bytes.length,media_type:'application/pdf'};
+ try{assert.deepEqual(Buffer.from(await (await api.documentOriginal(original)).arrayBuffer()),bytes);redirect=true;await assert.rejects(api.documentOriginal(original));assert.equal(calls,2);await assert.rejects(api.documentOriginal({...original,attachment_id:'../elsewhere'}));assert.equal(calls,2);}
+ finally{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}
 });

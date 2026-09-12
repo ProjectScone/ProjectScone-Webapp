@@ -25,3 +25,10 @@ test('retained text must belong to the requested episode and is not interpreted 
   assert.equal(parseRetainedSource({episode_id:8,content:'<b>literal</b>'},8).content,'<b>literal</b>');
   for(const bad of [null,{episode_id:9,content:'wrong'},{episode_id:8,content:null}])assert.throws(()=>parseRetainedSource(bad,8),/source response/i);
 });
+
+test('document display names are additive labels and preserve original source identity',()=>{
+ const source='attachment:'+'a'.repeat(64);
+ const result=parseSourcePage({items:[{...item,source,document_filename:'café.csv'}],has_more:false,next_before:null});
+ assert.equal(result.items[0].document_filename,'café.csv');assert.equal(result.items[0].source,source);
+ for(const document_filename of [17,'','bad\u0000.csv','x'.repeat(1025)])assert.throws(()=>parseSourcePage({items:[{...item,document_filename}],has_more:false,next_before:null}));
+});

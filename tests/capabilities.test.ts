@@ -4,6 +4,18 @@ import { readFileSync } from 'node:fs';
 import { parseCapabilities } from '../src/capabilities.ts';
 
 const fixtures = JSON.parse(readFileSync(new URL('./fixtures/http-capabilities.json', import.meta.url), 'utf8'));
+test('entity timelines require an independent explicit capability',()=>{
+ const features={...fixtures.python.features};delete features['graph.timeline'];
+ assert.equal(parseCapabilities({...fixtures.python,features}).features['graph.timeline'],false);
+ assert.equal(parseCapabilities({...fixtures.python,features:{...features,'graph.timeline':true}}).features['graph.timeline'],true);
+ for(const value of ['true',1,null])assert.throws(()=>parseCapabilities({...fixtures.python,features:{...features,'graph.timeline':value}}));
+});
+test('source provenance requires an explicit independent capability',()=>{
+ const features={...fixtures.python.features};delete features['graph.sources'];
+ assert.equal(parseCapabilities({...fixtures.python,features}).features['graph.sources'],false);
+ assert.equal(parseCapabilities({...fixtures.python,features:{...features,'graph.sources':true}}).features['graph.sources'],true);
+ for(const value of ['true',1,null])assert.throws(()=>parseCapabilities({...fixtures.python,features:{...features,'graph.sources':value}}));
+});
 test('image inference requires its own explicit capability',()=>{
   const features={...fixtures.python.features};delete features['images.understand'];
   assert.equal(parseCapabilities({...fixtures.python,features}).features['images.understand'],false);
@@ -85,4 +97,35 @@ test('source upload requires explicit combined episode attachment support', () =
   assert.equal(parseCapabilities(fixtures.rust).features['episodes.attachments'], false);
   assert.equal(parseCapabilities({...fixtures.python,features:{...fixtures.python.features,'episodes.attachments':true}}).features['episodes.attachments'], true);
   assert.throws(()=>parseCapabilities({...fixtures.python,features:{...fixtures.python.features,'episodes.attachments':'true'}}),/capabilit/i);
+});
+
+test('knowledge and entity inspection require separate explicit capabilities',()=>{
+ for(const key of ['graph.knowledge','entities.read','graph.report','graph.path','graph.export','graph.knowledge_paging','graph.knowledge_seeds','graph.knowledge_walk','recall.graph_boost']){
+  const features={...fixtures.python.features};delete features[key];
+  assert.equal(parseCapabilities({...fixtures.python,features}).features[key],false);
+  assert.equal(parseCapabilities({...fixtures.python,features:{...features,[key]:true}}).features[key],true);
+  for(const value of ['true',1,null])assert.throws(()=>parseCapabilities({...fixtures.python,features:{...features,[key]:value}}));
+ }
+});
+
+test('document provenance requires an explicit independent capability',()=>{
+ const features={...fixtures.python.features};delete features['documents.provenance'];
+ assert.equal(parseCapabilities({...fixtures.python,features}).features['documents.provenance'],false);
+ assert.equal(parseCapabilities({...fixtures.python,features:{...features,'documents.provenance':true}}).features['documents.provenance'],true);
+ for(const value of ['true',1,null])assert.throws(()=>parseCapabilities({...fixtures.python,features:{...features,'documents.provenance':value}}));
+});
+
+test('document imports require explicit file support independently of provenance reads',()=>{
+ const features={...fixtures.python.features,'documents.provenance':true};delete features['documents.files'];
+ assert.equal(parseCapabilities({...fixtures.python,features}).features['documents.files'],false);
+ assert.equal(parseCapabilities({...fixtures.python,features:{...features,'documents.files':true}}).features['documents.files'],true);
+ for(const value of ['true',1,null])assert.throws(()=>parseCapabilities({...fixtures.python,features:{...features,'documents.files':value}}));
+});
+
+
+test('source removal requires explicit workflow support independent of source reads',()=>{
+ const features={...fixtures.python.features};delete features['episodes.forget'];
+ assert.equal(parseCapabilities({...fixtures.python,features}).features['episodes.forget'],false);
+ assert.equal(parseCapabilities({...fixtures.python,features:{...features,'episodes.forget':true}}).features['episodes.forget'],true);
+ for(const value of ['true',1,null])assert.throws(()=>parseCapabilities({...fixtures.python,features:{...features,'episodes.forget':value}}));
 });

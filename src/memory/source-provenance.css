@@ -1,0 +1,16 @@
+.source-provenance{margin-top:24px;border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow-wrap:anywhere;}
+.source-provenance>summary{padding:16px;cursor:pointer;font-weight:600;}
+.source-provenance>section{padding:0 20px 20px;}
+.source-provenance form,.source-provenance nav{display:flex;flex-wrap:wrap;align-items:end;gap:12px;}
+.source-provenance label{display:grid;gap:6px;max-width:100%;}
+.source-provenance input,.source-provenance select{padding:8px;border:1px solid var(--line);background:var(--surface);color:inherit;border-radius:6px;max-width:100%;}
+.source-provenance input{width:120px;}
+.source-provenance h3{margin-top:24px;}
+.source-provenance li{padding:6px 0;}
+.source-provenance li small{display:block;color:var(--muted);}
+.source-provenance-link{border:0;padding:4px 0;background:none;color:var(--accent);text-decoration:underline;font:inherit;cursor:pointer;text-align:left;}
+.source-provenance article{padding:16px 0;border-top:1px solid var(--line);}
+.source-provenance article h4{margin:0;}
+.source-provenance blockquote{margin:12px 0;border-left:3px solid var(--line);padding-left:12px;white-space:pre-wrap;}
+.source-provenance-excerpt{background:var(--bg);border:1px solid var(--line);padding:16px;margin-top:16px;border-radius:8px;}
+.source-provenance-excerpt pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:400px;overflow:auto;font-size:13px;}
