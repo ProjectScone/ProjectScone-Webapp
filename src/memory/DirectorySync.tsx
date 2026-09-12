@@ -1,6 +1,6 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {ApiError,type ApiClient} from '../api';
-import {assertSyncIntent,canCancelSync,canResumeSync,controlSync,hasSyncResults,parseSyncCollections,readSyncHistory,readSyncResults,readSyncRun,startSync,syncRequestOptions,type SyncCollection,type SyncHistory,type SyncResults,type SyncRun} from './directory-sync';
+import {displaySyncPath,assertSyncIntent,canCancelSync,canResumeSync,controlSync,hasSyncResults,parseSyncCollections,readSyncHistory,readSyncResults,readSyncRun,startSync,syncRequestOptions,type SyncCollection,type SyncHistory,type SyncResults,type SyncRun} from './directory-sync';
 import './directory-sync.css';
 
 type Pending={id:string;space:string;collection:SyncCollection;deleteMissing:boolean};
@@ -116,8 +116,13 @@ function SyncResultView({api,run,close}:{api:ApiClient;run:SyncRun;close:()=>voi
   <p>Historical receipts from this scan. Sources may have changed or been removed since then. Use the stored source library to inspect current retained content.</p>
   {error?<div role="alert"><p>{error}</p><button className="btn quiet small" onClick={()=>setVersion(value=>value+1)}>Retry results</button></div>:!page?<p role="status">Loading sync results…</p>:<>
    {!page.items.length&&<p>This scan recorded no source outcomes or issues.</p>}
-   <ol start={(after??-1)+2}>{page.items.map(item=><li key={item.index}>{item.source?<><strong>{item.source.path}</strong><p>{item.source.status}{item.source.episodeId!==null?` · Recorded episode #${item.source.episodeId}`:''}{item.source.previousEpisodeId!==null?` · Previous episode #${item.source.previousEpisodeId}`:''}{item.source.code?` · ${item.source.code}`:''}</p></>:item.issue?<><strong>Scan issue · {item.issue.code}</strong><pre>{item.issue.path}</pre>{item.issue.pathEscaped&&<p>Escaped filename diagnostic; this is not a source link.</p>}</>:null}</li>)}</ol>
+   <ol start={(after??-1)+2}>{page.items.map(item=><li key={item.index}>{item.source?<><SyncPath path={item.source.path}/><p>{item.source.status}{item.source.episodeId!==null?` · Recorded episode #${item.source.episodeId}`:''}{item.source.previousEpisodeId!==null?` · Previous episode #${item.source.previousEpisodeId}`:''}{item.source.code?` · ${item.source.code}`:''}</p></>:item.issue?<><strong>Scan issue · {item.issue.code}</strong><SyncPath path={item.issue.path} escaped={item.issue.pathEscaped} diagnostic/></>:null}</li>)}</ol>
   </>}
   <nav className="sync-actions" aria-label="Sync result pages"><button className="btn quiet small" disabled={!page||cursors.length===1} onClick={()=>setCursors(values=>values.slice(0,-1))}>Previous results</button><span>Page {cursors.length}</span><button className="btn quiet small" disabled={!page||page.nextAfter===null} onClick={()=>setCursors(values=>[...values,page?.nextAfter??undefined])}>More results</button></nav>
  </section>;
+}
+
+function SyncPath({path,escaped=false,diagnostic=false}:{path:string;escaped?:boolean;diagnostic?:boolean}){
+ const display=displaySyncPath(path);
+ return <>{diagnostic?<pre>{display.text}</pre>:<strong>{display.text}</strong>}{(escaped||display.escaped)&&<p>Escaped filename diagnostic; this is not a source link.</p>}</>;
 }

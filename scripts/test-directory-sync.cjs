@@ -8,7 +8,7 @@ const stamp='2026-09-12T12:00:00+00:00',digest='a'.repeat(64),cursor='c'.repeat(
 function run(id='scan'){return {record:{run_id:id,space:'alpha',spec:{collection_id:'notes',configuration:digest,delete_missing:false,deadline_s:300,max_attempts:3},created_at:stamp,revision:1,attempt:1,status:'running',last_started_at:stamp,cancel_requested_at:null,finished_at:null,error_code:null,collection_instance:null,source_count:0,issue_count:0,outcome_count:0,skipped:0},status:'running',active_local:true,active_elsewhere:false,outcome_unknown:false};}
 function completed(id='scan'){const value=run(id);return {...value,record:{...value.record,status:'completed',finished_at:stamp,collection_instance:'b'.repeat(32)},status:'completed',active_local:false};}
 async function fixture(t,changes={}){
- const state={supported:true,allowDelete:false,loseAdmission:false,refuseStart:false,unchangedControl:false,foreignResults:false,foreignOwner:false,rows:[],...changes},requests=[];
+ const state={supported:true,allowDelete:false,loseAdmission:false,refuseStart:false,unchangedControl:false,foreignResults:false,foreignOwner:false,rows:[],outcomes:[],...changes},requests=[];
  const html=fs.readFileSync(path.join(__dirname,'../dist/console.html'),'utf8').replaceAll('__SCONE_TOKEN__','directory-fixture');
  const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,'http://fixture');if(url.pathname==='/memory'){res.setHeader('content-type','text/html');return res.end(html);}if(url.pathname==='/favicon.ico'){res.statusCode=204;return res.end();}
@@ -26,7 +26,7 @@ async function fixture(t,changes={}){
   if(url.pathname==='/v1/sync-runs')return send({items:url.searchParams.has('after')?state.rows.slice(20):state.rows.slice(0,20),next_after:!url.searchParams.has('after')&&state.rows.length>20?cursor:null});
   const match=url.pathname.match(/^\/v1\/sync-runs\/([^/]+)(?:\/(result|resume|cancel))?$/);
   if(match){const value=state.rows.find(row=>row.record.run_id===match[1]);if(!value){res.statusCode=404;return send({error:'sync_not_found'});}
-   if(match[2]==='result')return send({space:state.foreignResults?'beta':'alpha',run_id:value.record.run_id,items:[],next_after:null});
+   if(match[2]==='result')return send({space:state.foreignResults?'beta':'alpha',run_id:value.record.run_id,items:state.outcomes,next_after:null});
    if(match[2]==='cancel'||match[2]==='resume'){res.statusCode=202;return send(value);}
    return send(value);
   }
@@ -69,4 +69,15 @@ test('history cursor navigation preserves stable pages and rejects foreign resul
  await panel.getByRole('button',{name:'More runs',exact:true}).click();await panel.locator('.sync-run code').getByText('run-20',{exact:true}).waitFor();assert.equal(await panel.locator('.sync-run').count(),1);assert(requests.some(value=>value.after===cursor));
  await panel.getByRole('button',{name:'Inspect results for run-20',exact:true}).click();const results=panel.getByRole('region',{name:'Historical sync results'});await results.getByRole('alert').waitFor();assert.equal(await results.getByText('This scan recorded no source outcomes or issues.',{exact:true}).count(),0);
  await panel.getByRole('button',{name:'Previous runs',exact:true}).click();await panel.locator('.sync-run code').getByText('run-0',{exact:true}).waitFor();assert.equal(await panel.locator('.sync-run').count(),20);
+});
+
+test('bidi filenames display escaped diagnostics without active direction controls',async t=>{
+ const value=completed();value.record.source_count=1;value.record.issue_count=1;value.record.outcome_count=2;value.record.status='partial';value.status='partial';
+ const outcomes=[{index:0,source:{path:'report\u202egnp.exe',status:'added',episode_id:1,previous_episode_id:null,code:null},issue:null},{index:1,source:null,issue:{path:'notes/\u2066hidden.txt',path_escaped:false,code:'invalid_path'}}];
+ const {panel}=await fixture(t,{rows:[value],outcomes});await panel.getByRole('button',{name:'Inspect results for scan',exact:true}).click();
+ const results=panel.getByRole('region',{name:'Historical sync results'});
+ await results.getByText('"report\\u202egnp.exe"',{exact:true}).waitFor();
+ await results.getByText('"notes/\\u2066hidden.txt"',{exact:true}).waitFor();
+ assert.equal(await results.getByText('Escaped filename diagnostic; this is not a source link.',{exact:true}).count(),2);
+ assert(!/[\u202a-\u202e\u2066-\u2069]/.test(await results.textContent()));
 });

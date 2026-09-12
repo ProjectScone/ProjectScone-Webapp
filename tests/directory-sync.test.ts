@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {parseSyncCollections,parseSyncRun,parseSyncHistory,parseSyncResults,canResumeSync,canCancelSync,startSync,controlSync,readSyncHistory} from '../src/memory/directory-sync.ts';
+import {displaySyncPath,parseSyncCollections,parseSyncRun,parseSyncHistory,parseSyncResults,canResumeSync,canCancelSync,startSync,controlSync,readSyncHistory} from '../src/memory/directory-sync.ts';
 import {parseCapabilities,FEATURE_KEYS} from '../src/capabilities.ts';
 
 const digest='a'.repeat(64),stamp='2026-09-12T12:00:00+00:00';
@@ -91,4 +91,18 @@ test('results require the exact space and run envelope and reject failed complet
 });
 test('collection labels with filesystem-style Unicode diagnostics remain displayable',()=>{
  const items=parseSyncCollections({items:[{...collection(),label:'Notes\ud800'}]});assert.match(items[0].label,/\\ud800/);
+});
+
+test('bidi controls are visible in labels and filename displays without changing source identity',()=>{
+ for(const code of [0x61c,0x200e,0x200f,0x202a,0x202b,0x202c,0x202d,0x202e,0x2066,0x2067,0x2068,0x2069]){
+  const control=String.fromCharCode(code),path=`report${control}gnp.exe`,escaped='\\u'+code.toString(16).padStart(4,'0');
+  assert.deepEqual(displaySyncPath(path),{text:`"report${escaped}gnp.exe"`,escaped:true});
+  const label=parseSyncCollections({items:[{...collection(),label:path}]}).at(0)?.label;
+  assert.equal(label,`Escaped label: "report${escaped}gnp.exe"`);
+  const run={...parseSyncRun(terminal(),'alpha'),status:'completed' as const,sourceCount:1,issueCount:0,outcomeCount:1};
+  const result=parseSyncResults({space:'alpha',run_id:run.id,items:[{index:0,source:{path,status:'added',episode_id:1,previous_episode_id:null,code:null},issue:null}],next_after:null},run);
+  assert.equal(result.items[0].source?.path,path);
+ }
+ assert.deepEqual(displaySyncPath('ملاحظات/😀.txt'),{text:'ملاحظات/😀.txt',escaped:false});
+ assert.deepEqual(displaySyncPath('line\nname'),{text:'"line\\nname"',escaped:true});
 });
