@@ -1,8 +1,9 @@
-import {bindingIds,identifier,isHandoffPlan,parseSavedPlan,record,type WorkflowPlan,type HandoffPlan} from './plans.ts';
-export interface RunStatus {space:string;run_id:string;created_at:string;workflow_id:string;plan_revision:number;status:string;active_local:boolean;completed_steps:string[];inflight:string|null;outcome_unknown:boolean;error_class:string|null;max_parallel:number;inflight_steps:string[]}
+import {bindingIds,identifier,isHandoffPlan,isInputTask,parseSavedPlan,record,type WorkflowPlan,type HandoffPlan} from './plans.ts';
+export interface RunStatus {space:string;run_id:string;created_at:string;workflow_id:string;plan_revision:number;status:string;active_local:boolean;completed_steps:string[];inflight:string|null;outcome_unknown:boolean;error_class:string|null;max_parallel:number;inflight_steps:string[];waiting_steps:string[]}
 export interface RunRequest {space:string;run_id:string;question:string;created_at:string;plan:WorkflowPlan;revision:number;bindings:Record<string,string>;max_parallel:number}
-export interface TaskOutput {task_id:string;agent_id:string;model_id:string;text:string;source_status:'retained'|'none';evidence_ids:string[];model_calls:number;tool_calls:number;handoff_to?:string|null}
-export interface RunResult {tasks:TaskOutput[];outcome?:'completed'|'handoff_limit';finalTask?:string|null}
+export interface TaskOutput {kind?:'model';task_id:string;agent_id:string;model_id:string;text:string;source_status:'retained'|'none';evidence_ids:string[];model_calls:number;tool_calls:number;handoff_to?:string|null}
+export interface HumanOutput {kind:'human_input';task_id:string;text:string;activation_id:string}
+export interface RunResult {tasks:(TaskOutput|HumanOutput)[];outcome?:'completed'|'handoff_limit';finalTask?:string|null}
 function fail():never{throw Error('The run response could not be verified.');}
 function text(value:unknown,max:number):string{if(typeof value!=='string'||!value.trim()||value.length>max)fail();return value;}
 function integer(value:unknown,min:number,max=Number.MAX_SAFE_INTEGER):number{if(typeof value!=='number'||!Number.isSafeInteger(value)||value<min||value>max)fail();return value;}
@@ -23,9 +24,9 @@ export function parseRunStatus(value:unknown,space:string,runId?:string):RunStat
  const status=text(row.status,64),inflight=row.inflight===null?null:identifier(row.inflight),inflight_steps=row.inflight_steps===undefined?(inflight?[inflight]:[]):names(row.inflight_steps);
  const max_parallel=integer(row.max_parallel===undefined?1:row.max_parallel,1,8);
  if((inflight_steps[0]??null)!==inflight||inflight_steps.length>max_parallel)fail();
- if(!['created','deadline','outcome_unknown','retry_not_allowed','registered','running','completed','failed','cancelled','sources_invalid','verification_unavailable','unavailable'].includes(status))fail();
+ if(!['created','deadline','outcome_unknown','retry_not_allowed','registered','running','completed','failed','cancelled','sources_invalid','verification_unavailable','unavailable','awaiting_input'].includes(status))fail();
  return {space,run_id,created_at:date(row.created_at),workflow_id:identifier(row.workflow_id),plan_revision:integer(row.plan_revision,1),status,
-  active_local:bool(row.active_local),completed_steps:names(row.completed_steps),inflight,inflight_steps,max_parallel,outcome_unknown:bool(row.outcome_unknown),error_class:row.error_class===null?null:text(row.error_class,128)};
+  active_local:bool(row.active_local),completed_steps:names(row.completed_steps),inflight,inflight_steps,waiting_steps:row.waiting_steps===undefined?[]:names(row.waiting_steps),max_parallel,outcome_unknown:bool(row.outcome_unknown),error_class:row.error_class===null?null:text(row.error_class,128)};
 }
 export function parseRunPage(value:unknown,space:string):{items:RunStatus[];next_after:string|null}{
  const row=record(value),items=list(row.items,100).map(item=>parseRunStatus(item,space));
@@ -45,8 +46,10 @@ export function parseRunRequest(value:unknown,space:string,runId:string):RunRequ
 function hopIds(plan:HandoffPlan):string[]{return Array.from({length:plan.max_handoffs+1},(_,index)=>`hop-${String(index+1).padStart(2,'0')}`);}
 export function matchRun(status:RunStatus,request:RunRequest):void{
  if(status.run_id!==request.run_id||status.space!==request.space||status.workflow_id!==request.plan.workflow_id||status.plan_revision!==request.revision||status.max_parallel!==request.max_parallel||Date.parse(status.created_at)!==Date.parse(request.created_at))fail();
- const ids=isHandoffPlan(request.plan)?hopIds(request.plan):bindingIds(request.plan),known=new Set(ids);
- if([...status.completed_steps,...status.inflight_steps].some(id=>!known.has(id))||(status.inflight!==null&&!known.has(status.inflight)))fail();
+ const ids=isHandoffPlan(request.plan)?hopIds(request.plan):request.plan.tasks.map(task=>task.task_id),known=new Set(ids);
+ if([...status.completed_steps,...status.inflight_steps,...status.waiting_steps].some(id=>!known.has(id))||(status.inflight!==null&&!known.has(status.inflight)))fail();
+ if(!isHandoffPlan(request.plan)){const tasks=request.plan.tasks;if(status.inflight_steps.some(id=>tasks.some(task=>task.task_id===id&&isInputTask(task))))fail();}
+ if(status.waiting_steps.some(id=>isHandoffPlan(request.plan)||!request.plan.tasks.some(task=>task.task_id===id&&isInputTask(task)))||status.waiting_steps.some(id=>status.completed_steps.includes(id)||status.inflight_steps.includes(id)))fail();
  if(isHandoffPlan(request.plan)&&JSON.stringify(status.completed_steps)!==JSON.stringify(ids.slice(0,status.completed_steps.length)))fail();
  if(isHandoffPlan(request.plan)&&status.inflight!==null&&status.inflight!==ids[status.completed_steps.length])fail();
 }
@@ -89,8 +92,13 @@ export function parseRunResult(value:unknown,request:RunRequest):RunResult{
  if(row.space!==request.space||row.run_id!==request.run_id||row.status!=='completed'||Object.keys(results).length!==known.size)fail();
  if(names(row.reused_steps).some(id=>!known.has(id)))fail();
  let packets=0;
- const tasks=request.plan.tasks.map(task=>{
+ const tasks:(TaskOutput|HumanOutput)[]=request.plan.tasks.map(task=>{
   const output=record(results[task.task_id]);
+  if(isInputTask(task)){
+   if(Object.keys(output).some(key=>!['kind','task_id','depends_on','text','activation_id','response_digest'].includes(key))||output.kind!=='human_input'||output.task_id!==task.task_id||JSON.stringify(names(output.depends_on))!==JSON.stringify(task.depends_on)||typeof output.response_digest!=='string'||!/^[a-f0-9]{64}$/.test(output.response_digest))fail();
+   const reply=text(output.text,task.max_response_bytes);if(new TextEncoder().encode(reply).length>task.max_response_bytes)fail();
+   return {kind:'human_input',task_id:task.task_id,text:reply,activation_id:identifier(output.activation_id)};
+  }
   if(output.task_id!==task.task_id||output.agent_id!==task.agent_id||output.model_id!==task.model_id||output.binding!==request.bindings[task.task_id]||JSON.stringify(names(output.depends_on))!==JSON.stringify(task.depends_on))fail();
   const evidence_ids=list(output.evidence_ids,2048).map(id=>text(id,4096));
   const evidence_packets=list(output.evidence_packets,32).map(packet=>text(packet,1_048_576));packets+=evidence_packets.length;

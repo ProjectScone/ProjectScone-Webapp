@@ -1,13 +1,18 @@
 export interface ModelChoice {model_id:string;label:string;revision:string}
 export interface AgentChoice {agent_id:string;default_model:string;models:ModelChoice[]}
 export interface AgentTask {task_id:string;agent_id:string;model_id:string;prompt:string;depends_on:string[]}
+export interface HumanInputTask {kind:'input';task_id:string;prompt:string;depends_on:string[];max_response_bytes:number}
+export type TaskNode=AgentTask|HumanInputTask;
+export interface InteractivePlan {kind:'interactive';workflow_id:string;tasks:TaskNode[]}
+export function isInputTask(task:TaskNode):task is HumanInputTask{return 'kind' in task&&task.kind==='input';}
+export function isInteractivePlan(plan:WorkflowPlan):plan is InteractivePlan{return 'kind' in plan&&plan.kind==='interactive';}
 export interface AgentPlan {workflow_id:string;tasks:AgentTask[]}
 export interface HandoffAgent {agent_id:string;model_id:string;can_handoff_to:string[]}
 export interface HandoffPlan {workflow_id:string;root_agent:string;max_handoffs:number;agents:HandoffAgent[]}
-export type WorkflowPlan=AgentPlan|HandoffPlan;
+export type WorkflowPlan=AgentPlan|HandoffPlan|InteractivePlan;
 export interface SavedPlan {space:string;revision:number;plan:WorkflowPlan;configuration_current:boolean;updated_at:string;bindings:Record<string,string>}
 export function isHandoffPlan(plan:WorkflowPlan):plan is HandoffPlan{return 'agents' in plan;}
-export function bindingIds(plan:WorkflowPlan):string[]{return isHandoffPlan(plan)?plan.agents.map(agent=>agent.agent_id):plan.tasks.map(task=>task.task_id);}
+export function bindingIds(plan:WorkflowPlan):string[]{return isHandoffPlan(plan)?plan.agents.map(agent=>agent.agent_id):plan.tasks.filter(task=>!isInputTask(task)).map(task=>task.task_id);}
 export function record(value:unknown):Record<string,unknown>{
  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid agent configuration response.');
  return value as Record<string,unknown>;
@@ -18,7 +23,7 @@ function text(value:unknown,max:number):string{
 }
 export function identifier(value:unknown):string{
  const result=text(value,128);
- if(!/^[A-Za-z0-9._:-]+$/.test(result)||result==='.'||result==='..')throw Error('Use letters, numbers, dots, colons, underscores or hyphens for identifiers.');
+ if(/[^A-Za-z0-9._:-]/.test(result)||result==='.'||result==='..')throw Error('Use letters, numbers, dots, colons, underscores or hyphens for identifiers.');
  return result;
 }
 function list(value:unknown,max:number):unknown[]{
@@ -50,11 +55,18 @@ function parsePlan(value:unknown):WorkflowPlan{
   if(typeof row.max_handoffs!=='number'||!Number.isInteger(row.max_handoffs)||row.max_handoffs<0||row.max_handoffs>31)throw Error('Allow between 0 and 31 handoffs.');
   return {workflow_id:identifier(row.workflow_id),root_agent,max_handoffs:row.max_handoffs,agents};
  }
- if(Object.keys(row).some(key=>!['workflow_id','tasks'].includes(key)))throw Error('Invalid task plan fields.');
- const tasks=list(row.tasks,32).map(value=>{
+ const interactive=row.kind==='interactive';
+ if(('kind' in row&&!interactive)||Object.keys(row).some(key=>!['workflow_id','tasks',...(interactive?['kind']:[])].includes(key)))throw Error('Invalid task plan fields.');
+ const tasks:TaskNode[]=list(row.tasks,32).map(value=>{
   const task=record(value),prompt=text(task.prompt,2000),depends_on=list(task.depends_on,31).map(identifier);
   if(new TextEncoder().encode(prompt).length>2000)throw Error('Each task instruction must fit within 2,000 UTF-8 bytes.');
   unique(depends_on);
+  if(task.kind==='input'){
+   if(!interactive||Object.keys(task).some(key=>!['kind','task_id','prompt','depends_on','max_response_bytes'].includes(key)))throw Error('Invalid human input task.');
+   if(typeof task.max_response_bytes!=='number'||!Number.isInteger(task.max_response_bytes)||task.max_response_bytes<1||task.max_response_bytes>4000)throw Error('Response limit must be between 1 and 4,000 UTF-8 bytes.');
+   return {kind:'input',task_id:identifier(task.task_id),prompt,depends_on,max_response_bytes:task.max_response_bytes};
+  }
+  if(Object.keys(task).some(key=>!['task_id','agent_id','model_id','prompt','depends_on'].includes(key)))throw Error('Invalid model task fields.');
   return {task_id:identifier(task.task_id),agent_id:identifier(task.agent_id),model_id:identifier(task.model_id),prompt,depends_on};
  });
  if(!tasks.length)throw Error('Add at least one task.');
@@ -67,11 +79,12 @@ function parsePlan(value:unknown):WorkflowPlan{
   if(!ready.length)throw Error('Task dependencies must not form a cycle.');
   ready.forEach(task=>done.add(task.task_id));
  }
- return {workflow_id:identifier(row.workflow_id),tasks};
+ if(interactive){if(!tasks.some(isInputTask))throw Error('Interactive workflows require a human input task.');return {kind:'interactive',workflow_id:identifier(row.workflow_id),tasks};}
+ return {workflow_id:identifier(row.workflow_id),tasks:tasks.filter((task):task is AgentTask=>!isInputTask(task))};
 }
 export function validatePlan(value:unknown,catalog:AgentChoice[]):WorkflowPlan{
  const plan=parsePlan(value);
- const selections=isHandoffPlan(plan)?plan.agents:plan.tasks;
+ const selections=isHandoffPlan(plan)?plan.agents:plan.tasks.flatMap(task=>isInputTask(task)?[]:[task]);
  if(selections.some(task=>!catalog.find(agent=>agent.agent_id===task.agent_id)?.models.some(model=>model.model_id===task.model_id)))throw Error('Choose an available agent and allowed model for every step.');
  return plan;
 }
