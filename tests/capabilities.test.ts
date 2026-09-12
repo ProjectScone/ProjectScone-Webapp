@@ -129,3 +129,10 @@ test('source removal requires explicit workflow support independent of source re
  assert.equal(parseCapabilities({...fixtures.python,features:{...features,'episodes.forget':true}}).features['episodes.forget'],true);
  for(const value of ['true',1,null])assert.throws(()=>parseCapabilities({...fixtures.python,features:{...features,'episodes.forget':value}}));
 });
+
+test('multi-part search requires an explicit boolean capability',()=>{
+ const features={...fixtures.python.features};delete features['recall.parts'];
+ assert.equal(parseCapabilities({...fixtures.python,features}).features['recall.parts'],false);
+ assert.equal(parseCapabilities({...fixtures.python,features:{...features,'recall.parts':true}}).features['recall.parts'],true);
+ for(const value of ['true',1,null])assert.throws(()=>parseCapabilities({...fixtures.python,features:{...features,'recall.parts':value}}));
+});

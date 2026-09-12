@@ -1,0 +1,12 @@
+.parted-search { margin-top: 24px; min-width: 0; }
+.parted-search h2 { font-size: 20px; margin: 18px 0 10px; }
+.parted-intro { max-width: 900px; }
+.parted-intro p { margin: 8px 0; }
+.parted-search p { line-height: 1.55; }
+.parted-questions { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,300px),1fr)); gap: 12px; list-style: none; padding: 0; margin: 18px 0 28px; }
+.parted-questions li { border: 1px solid var(--border, #d9dbd7); border-radius: 12px; padding: 16px; min-width: 0; overflow-wrap: anywhere; }
+.parted-questions h3 { margin: 0 0 12px; font-size: 16px; line-height: 1.45; }
+.parted-questions h3 span { display: block; font-size: 12px; font-weight: 500; margin-bottom: 6px; opacity: .7; }
+.parted-questions p { font-size: 13px; margin: 8px 0 0; }
+.parted-credit { font-size: 13px; padding: 12px 0 0; margin: 0; }
+.parted-excerpt { min-width: 0; overflow-wrap: anywhere; }

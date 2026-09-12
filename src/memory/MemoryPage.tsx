@@ -1,3 +1,5 @@
+import {PartedSearchResults} from './PartedSearchResults';
+import {partsSearchProblem} from './recall-parts';
 import {RecallEntities} from './RecallEntities';
 import {recallLaneLabels} from './recall-entities';
 import {KnowledgeView} from './KnowledgeView';
@@ -168,7 +170,7 @@ export function MemoryPage({ api }: { api: ApiClient }) {
         {!caps ? discovery.error ? <WorkspaceState icon="status" role="alert" className="workspace-state-notice" title="Server capabilities unavailable" description={<><p>We could not verify which operations this server supports. Your selected page is preserved; no workflow requests were sent.</p><p className="workspace-state-detail">{discovery.error}</p></>} actions={<button className="btn quiet" onClick={discovery.retry}>Retry capabilities</button>}/> : <WorkspaceState icon="status" role="status" busy title="Checking server capabilities…" description="Verifying the operations available in this memory space before loading your workspace."/>
           : !caps[VIEW_FEATURES[view]] ? <WorkspaceState icon="status" title="This page is not available on this server" description="Choose an available section in the workspace navigation. Your memory connection remains active."/>
           : <>
-            {view === "search" && <SearchView api={api} state={search} setState={setSearch} onScope={searchInScope} canAddSources={caps['episodes.attachments']} canFilterMetadata={caps['recall.conditions']} canUseGraph={caps['recall.graph_boost']} />}
+            {view === "search" && <SearchView api={api} state={search} setState={setSearch} onScope={searchInScope} canAddSources={caps['episodes.attachments']} canFilterMetadata={caps['recall.conditions']} canUseGraph={caps['recall.graph_boost']} canSearchParts={caps['recall.parts']} />}
             {view === "knowledge" && <KnowledgeView api={api} walkAvailable={caps['graph.knowledge_walk']} seedsAvailable={caps['graph.knowledge_seeds']} pagingAvailable={caps['graph.knowledge_paging']} timelineAvailable={caps['graph.timeline']} analysisAvailable={caps['graph.report']} pathsAvailable={caps['graph.path']} exportsAvailable={caps['graph.export']} detailsAvailable={caps['entities.read']} statusAvailable={caps['status.read']} />}
             {view === "documents" && <DocumentsView api={api} attachments={caps['episodes.attachments']} documentImports={caps['documents.files']&&caps['episodes.attachments']&&caps['episodes.read']&&caps['documents.provenance']} />}
             {view === "profile" && <ProfileView api={api} onOpenDocuments={caps['episodes.list']?()=>setView('documents'):undefined} />}
@@ -212,13 +214,16 @@ function Grounding({ f }: { f: Fact }) {
 
 /* ---------- search ---------- */
 
-function SearchView({ api, state, setState, onScope, canAddSources, canFilterMetadata, canUseGraph }: {
+function SearchView({ api, state, setState, onScope, canAddSources, canFilterMetadata, canUseGraph, canSearchParts }: {
+  canSearchParts:boolean;
   canFilterMetadata:boolean;
   canUseGraph:boolean;
   canAddSources: boolean;
   api: ApiClient; state: SearchState; setState: (f: (s: SearchState) => SearchState) => void; onScope: (k: string, v: string) => void;
 }) {
   const [draft, setDraft] = useState(state.q);
+  const [partsRefresh, setPartsRefresh] = useState(0);
+  const partsProblem = state.parts ? (!canSearchParts ? "This server does not support multi-part search. Search is paused." : partsSearchProblem(state)) : null;
   const [adding, setAdding] = useState(false);
   const [kind, setKind] = useState<"where" | "tag" | "asof">("where");
   const [fkey, setFkey] = useState("");
@@ -237,7 +242,7 @@ function SearchView({ api, state, setState, onScope, canAddSources, canFilterMet
   if(state.graphBoost)params.set('graph_boost','true');
   const query = params.toString();
 
-  const results = useSearchRecall(api, query, active&&!unsupportedFilter&&!unsupportedGraph);
+  const results = useSearchRecall(api, query, active&&!unsupportedFilter&&!unsupportedGraph&&!state.parts);
   const start = useAsync(
     () => active?Promise.resolve(null):Promise.all([
       api.request<Status>("/v1/status"),
@@ -294,12 +299,14 @@ function SearchView({ api, state, setState, onScope, canAddSources, canFilterMet
           <button className="btn small quiet" onClick={addFilter}>Add</button>
         </div>
       )}
+      {canSearchParts&&<label className="recall-entity-option"><input type="checkbox" checked={state.parts===true} onChange={event=>setState(s=>({...s,parts:event.target.checked}))}/>Search each question part<span>Search up to four detected parts separately and inspect what each found.</span></label>}
+      {partsProblem&&<p role="alert">{partsProblem} <button className="btn quiet small" onClick={()=>setState(s=>({...s,parts:false}))}>Use whole-question search</button></p>}
       {canUseGraph&&<label className="recall-entity-option"><input type="checkbox" checked={state.graphBoost===true} onChange={event=>setState(s=>({...s,graphBoost:event.target.checked}))}/>Use entity-assisted retrieval<span>Include passages naming entities connected to your query.</span></label>}
       {unsupportedGraph&&<p role="alert">This server does not support the selected entity-assisted retrieval. Search is paused. <button className="btn quiet small" onClick={()=>setState(s=>({...s,graphBoost:false}))}>Turn off entity-assisted retrieval</button></p>}
       {canFilterMetadata&&<MetadataFilter value={state.metadataFilter} onApply={metadataFilter=>setState(s=>({...s,metadataFilter}))}/>}
       {unsupportedFilter&&<p role="alert">This server does not advertise support for the applied metadata filter. Search is paused; clear the filter explicitly to search without it. <button className="btn quiet small" onClick={()=>setState(s=>({...s,metadataFilter:undefined}))}>Clear metadata filter</button></p>}
       </section>
-      {canAddSources&&<SourceComposer api={api} onSaved={()=>{void start.reload();results.retry();}}/>}
+      {canAddSources&&<SourceComposer api={api} onSaved={()=>{void start.reload();results.retry();setPartsRefresh(n=>n+1);}}/>}
 
       {!active ? (
         start.error ? <ErrorLine message={start.error} /> : !start.data ? <Empty>Loading…</Empty> : (() => {
@@ -323,7 +330,7 @@ function SearchView({ api, state, setState, onScope, canAddSources, canFilterMet
             </>
           );
         })()
-      ) : unsupportedFilter||unsupportedGraph?null:results.error ? <div role="alert"><ErrorLine message={results.error} /><button className="btn quiet" onClick={results.retry}>Retry search</button></div> : !results.data ? <Empty>Searching…</Empty> : (
+      ) : unsupportedFilter||unsupportedGraph||partsProblem?null:state.parts ? <PartedSearchResults api={api} query={query} state={state} refresh={partsRefresh} renderItem={item=><ResultRow item={item} api={api} onScope={onScope} onTag={t=>setState(s=>s.tags.includes(t)?s:{...s,tags:[...s.tags,t]})}/>}/> : results.error ? <div role="alert"><ErrorLine message={results.error} /><button className="btn quiet" onClick={results.retry}>Retry search</button></div> : !results.data ? <Empty>Searching…</Empty> : (
         <ResultList r={results.data} api={api} asOf={state.asOf} onScope={onScope} feedback={feedback} sendFeedback={sendFeedback}
           onTag={(t) => setState((s) => s.tags.includes(t) ? s : { ...s, tags: [...s.tags, t] })} />
       )}
