@@ -39,13 +39,29 @@ test('native negative-zero timestamps retain their valid source locator',()=>{
 });
 
 test('window coverage retains counts and distinguishes older unknown coverage',()=>{
- const f=fixture();Object.assign(f.value.metadata,{transcription_windows:'quiet-audio-windows-v1',chunk_seconds:'1',transcription_window_count:'2',transcription_empty_windows:'1'});
- assert.deepEqual(parseDocumentEvidence(f.value,f.source).media?.windowing,{maxSeconds:1,coverage:{windows:2,emptyWindows:1}});
+ const f=fixture();Object.assign(f.value.metadata,{transcription_windows:'quiet-audio-windows-v1',chunk_seconds:'2',transcription_window_count:'1',transcription_empty_windows:'0'});
+ assert.deepEqual(parseDocumentEvidence(f.value,f.source).media?.windowing,{maxSeconds:2,coverage:{windows:1,emptyWindows:0}});
  Reflect.deleteProperty(f.value.metadata,'transcription_window_count');Reflect.deleteProperty(f.value.metadata,'transcription_empty_windows');
- assert.deepEqual(parseDocumentEvidence(f.value,f.source).media?.windowing,{maxSeconds:1,coverage:undefined});
+ assert.deepEqual(parseDocumentEvidence(f.value,f.source).media?.windowing,{maxSeconds:2,coverage:undefined});
  assert.equal(parseDocumentEvidence(fixture().value,fixture().source).media?.windowing,undefined);
 });
 for(const change of [{transcription_window_count:'0'},{transcription_empty_windows:'2'},{transcription_empty_windows:'-1'},{transcription_window_count:2},{transcription_empty_windows:undefined},{chunk_seconds:'0'},{transcription_windows:undefined}])test(`invalid window coverage is refused: ${JSON.stringify(change)}`,()=>{
- const f=fixture();Object.assign(f.value.metadata,{transcription_windows:'quiet-audio-windows-v1',chunk_seconds:'1',transcription_window_count:'2',transcription_empty_windows:'1'},change);
+ const f=fixture();Object.assign(f.value.metadata,{transcription_windows:'quiet-audio-windows-v1',chunk_seconds:'2',transcription_window_count:'1',transcription_empty_windows:'0'},change);
  assert.throws(()=>parseDocumentEvidence(f.value,f.source));
+});
+
+test('coverage refuses counts and segment durations impossible under the selected window maximum',()=>{
+ for(const change of [{chunk_seconds:'120',transcription_window_count:'1000',transcription_empty_windows:'999'},{chunk_seconds:'1',transcription_window_count:'2',transcription_empty_windows:'0'}]){
+  const f=fixture();Object.assign(f.value.metadata,{transcription_windows:'quiet-audio-windows-v1'},change);
+  assert.throws(()=>parseDocumentEvidence(f.value,f.source));
+ }
+});
+
+test('empty counts cannot hide the minimum number of windows needed by retained observations',()=>{
+ const f=fixture();Object.assign(f.value.metadata,{duration_seconds:'3',audio_wav_bytes:'96044',transcription_windows:'quiet-audio-windows-v1',chunk_seconds:'1',transcription_window_count:'3',transcription_empty_windows:'2'});
+ f.value.segments[0].metadata.end_seconds='0.25';f.value.segments[0].locator='audio:0/segment:1/seconds:0.0-0.25';
+ f.value.segments[1].metadata.start_seconds='2';f.value.segments[1].metadata.end_seconds='2.25';f.value.segments[1].locator='audio:0/segment:2/seconds:2-2.25';
+ assert.throws(()=>parseDocumentEvidence(f.value,f.source));
+ Object.assign(f.value.metadata,{transcription_empty_windows:'1'});
+ assert.deepEqual(parseDocumentEvidence(f.value,f.source).media?.windowing?.coverage,{windows:3,emptyWindows:1});
 });

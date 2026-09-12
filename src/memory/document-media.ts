@@ -8,7 +8,7 @@ const numberPattern='-?[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?';
 const numeric=new RegExp('^'+numberPattern+'$'),locatorPattern=new RegExp('^audio:0/segment:([1-9][0-9]*)/seconds:('+numberPattern+')-('+numberPattern+')$');
 function record(value:unknown):Record<string,unknown>{if(!value||typeof value!=='object'||Array.isArray(value))throw bad();return value as Record<string,unknown>;}
 function seconds(value:unknown):number{if(typeof value!=='string'||value.length>40||!numeric.test(value))throw bad();const n=Number(value);if(!Number.isFinite(n)||n<0||n>600+1/16000)throw bad();return n;}
-function windowing(metadata:Record<string,unknown>,duration:number,segments:number):TranscriptWindowing|undefined{
+function windowing(metadata:Record<string,unknown>,duration:number,segments:TranscriptSegment[]):TranscriptWindowing|undefined{
  const keys=['transcription_windows','chunk_seconds','transcription_window_count','transcription_empty_windows'];
  if(keys.every(key=>metadata[key]===undefined))return undefined;
  const count=(value:unknown,max:number,min=0)=>{
@@ -17,9 +17,16 @@ function windowing(metadata:Record<string,unknown>,duration:number,segments:numb
  };
  if(metadata.transcription_windows!=='quiet-audio-windows-v1')throw bad();
  const maxSeconds=count(metadata.chunk_seconds,120,1);
+ let nonemptyMinimum=0,first=0;
+ for(const segment of segments){
+  if(segment.endSeconds-segment.startSeconds>maxSeconds+1/16000)throw bad();
+  if(!nonemptyMinimum||segment.endSeconds-first>maxSeconds+1/16000){nonemptyMinimum++;first=segment.startSeconds;}
+ }
  if(metadata.transcription_window_count===undefined&&metadata.transcription_empty_windows===undefined)return {maxSeconds,coverage:undefined};
  const windows=count(metadata.transcription_window_count,1000,1),emptyWindows=count(metadata.transcription_empty_windows,windows-1);
- if(windows<Math.ceil(duration/maxSeconds)||windows-emptyWindows>segments)throw bad();
+ const shortestCut=maxSeconds-Math.min(2,maxSeconds/5);
+ const maximumWindows=1+Math.ceil(Math.max(0,duration-maxSeconds)/shortestCut);
+ if(windows<Math.ceil(duration/maxSeconds)||windows>maximumWindows||windows-emptyWindows>segments.length||windows-emptyWindows<nonemptyMinimum)throw bad();
  return {maxSeconds,coverage:{windows,emptyWindows}};
 }
 export function parseMediaTranscript(format:string,parser:string,metadata:Record<string,unknown>,values:unknown[]):MediaTranscript|undefined{
@@ -42,7 +49,7 @@ export function parseMediaTranscript(format:string,parser:string,metadata:Record
   const bytes=Number(rawSize);if(bytes<46||bytes>19200044||(bytes-44)%2!==0||Math.abs((bytes-44)/32000-durationSeconds)>1e-8)throw bad();
   if(revision!==undefined)audio={attachment_id:hash,bytes,media_type:'audio/wav'};
  }
- return {durationSeconds,revision,segments,audio,windowing:windowing(metadata,durationSeconds,segments.length)};
+ return {durationSeconds,revision,segments,audio,windowing:windowing(metadata,durationSeconds,segments)};
 }
 export function transcriptTime(value:number):string{
  const millis=Math.round(value*1000),minutes=Math.floor(millis/60000),seconds=((millis%60000)/1000).toFixed(3).padStart(6,'0');return `${minutes}:${seconds}`;
