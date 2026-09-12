@@ -531,3 +531,24 @@ including a service restart and a forgotten source. Set `SCONE_TEST_PYTHON` to a
 interpreter with Scone's API/media dependencies, install local `ffmpeg`, and use
 the browser environment described above. Its generated audio and scripted
 transcript test interoperability, not transcription accuracy.
+
+### Configured directory synchronization
+
+Documents exposes local collections when the host advertises `documents.sync`.
+Start records a stable request ID and the discovered configuration; a changed
+collection is refused before admission. Missing-source removal is off by default
+and only offered for collections that allow it. Unconfirmed admissions can be
+checked without another write, or explicitly retried with the same intent.
+
+History reads never start work. Interrupted runs require explicit resume;
+cancellation acknowledges intent while the worker stops. The UI disables local
+controls for runs owned by another server process. Result pages validate their
+space, run identity and ordering, and label receipts as historical observations.
+The current source library remains the place to inspect retained content.
+
+`node --test scripts/test-directory-sync.cjs` checks control and transport faults.
+`scripts/test-directory-sync-native.cjs` exercises the standard native host with
+local SQLite and source journals on desktop/mobile, including edits, deletion,
+result paging, restart without replay, process termination and explicit recovery.
+Use the explicit Python/browser environment described above; its state is private
+to the test and it does not connect to the running memory service.

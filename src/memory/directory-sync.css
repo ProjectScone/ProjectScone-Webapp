@@ -1,0 +1,13 @@
+.directory-sync{border:1px solid var(--line);border-radius:14px;padding:24px;margin-bottom:24px;min-width:0}
+.directory-sync>header,.sync-results>header,.sync-history-heading,.sync-run-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.directory-sync h2,.directory-sync h3{margin:6px 0}.directory-sync p{line-height:1.6;font-size:13px;color:var(--muted)}
+.sync-start{display:flex;gap:16px;align-items:end;flex-wrap:wrap;margin:20px 0}.sync-start>label:first-child{display:grid;gap:8px;min-width:0;flex:1 1 240px}
+.sync-start select{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:inherit;min-width:0;font:inherit}
+.sync-removal{display:flex;align-items:start;gap:8px;flex:1 1 280px;font-size:13px;line-height:1.5}.sync-removal input{margin-top:3px;flex-shrink:0}
+.sync-history-heading{margin-top:24px}.sync-runs{list-style:none;margin:12px 0;padding:0;display:grid;gap:12px}.sync-run{border:1px solid var(--line);border-radius:10px;padding:16px;min-width:0}
+.sync-run-heading span{font-size:12px}.sync-run code,.sync-pending strong,.sync-results h3,.sync-results li strong{overflow-wrap:anywhere}.sync-run code{font-size:12px}
+.sync-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.sync-actions>span{font-size:12px}.sync-pending{padding:16px;border:1px solid var(--line);border-radius:10px}.sync-pending button{margin:4px 8px 4px 0}
+.sync-results{margin-top:24px;padding-top:20px;border-top:1px solid var(--line)}.sync-results ol{padding-left:24px}.sync-results li{padding:8px 0}.sync-results pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}
+@media(max-width:600px){.directory-sync{padding:16px}.directory-sync>header{align-items:start}.sync-actions .btn{max-width:100%;white-space:normal;overflow-wrap:anywhere}.sync-run{padding:12px}.sync-run-heading{align-items:start}.sync-start>.btn{width:100%}}
+
+.memory-page .directory-sync .sync-actions .btn{height:auto;min-height:36px;padding:8px 12px;line-height:1.4;white-space:normal;overflow-wrap:anywhere;max-width:100%}
