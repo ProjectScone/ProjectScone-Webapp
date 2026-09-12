@@ -25,6 +25,10 @@ export async function parseOcrTables(value:unknown,address:OcrTableAddress):Prom
    if(row!==Math.floor(index/columns)||column!==index%columns)throw Error('Table cells are out of order.');
    const regions=list(c.regions,5000).map(value=>count(value,n-1));if(!regions.length)throw Error('Table cell has no source regions.');
    for(const index of regions){if(used.has(index))throw Error('Repeated OCR region in table analysis.');used.add(index);}
+   for(let position=1;position<regions.length;position++){
+    const before=regions[position-1],after=regions[position],left=page.regions[before].box[0],right=page.regions[after].box[0];
+    if(left>right||(left===right&&before>after))throw Error('Table cell regions are out of order.');
+   }
    const observed=regions.map(i=>page.regions[i]),text=observed.map(r=>r.text).join(' ');
    const box=[Math.min(...observed.map(r=>r.box[0])),Math.min(...observed.map(r=>r.box[1])),Math.max(...observed.map(r=>r.box[2])),Math.max(...observed.map(r=>r.box[3]))];
    if(c.text!==text||JSON.stringify(c.box)!==JSON.stringify(box))throw Error('Table cell does not match its observed regions.');
