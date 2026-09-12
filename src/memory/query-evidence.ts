@@ -1,5 +1,5 @@
 export type QueryNodeKind = 'query' | 'chunk' | 'episode' | 'claim' | 'concept';
-export type QueryEdgeKind = 'returned' | 'chunked_into' | 'source_of' | 'extends' | 'derived_from' | 'contradicts' | 'supports' | 'superseded_by' | 'mentions' | 'asserts' | 'relation';
+export type QueryEdgeKind = 'returned' | 'chunked_into' | 'source_of' | 'extends' | 'derived_from' | 'contradicts' | 'supports' | 'superseded_by' | 'mentions' | 'asserts' | 'relation' | 'implied';
 export interface QueryEvidenceNode {id:string;kind:QueryNodeKind;label:string;ts?:string;data:Record<string,unknown>}
 export interface QueryEvidenceEdge {id:string;source:string;target:string;kind:QueryEdgeKind;data:Record<string,unknown>}
 export interface QueryEvidence {
@@ -13,8 +13,8 @@ const object=(value:unknown):value is Record<string,unknown>=>!!value&&typeof va
 const validId=(value:unknown):value is number=>typeof value==='number'&&Number.isSafeInteger(value)&&value>0;
 const count=(value:unknown):number=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=0?value:0;
 const nodeKinds:QueryNodeKind[]=['query','chunk','episode','claim','concept'];
-export const edgeLabels:Record<QueryEdgeKind,string>={returned:'Returned by search',chunked_into:'Contains passage',source_of:'Recorded source of',extends:'Extends',derived_from:'Derived from',contradicts:'Contradicts',supports:'Supports',superseded_by:'Superseded by',mentions:'Mentions exact name',asserts:'Asserts concept',relation:'Recorded relation'};
-export const evidenceEdgeLabel=(edge:QueryEvidenceEdge):string=>edge.kind==='relation'&&typeof edge.data.predicate==='string'?edge.data.predicate.replaceAll('_',' '):edge.kind==='asserts'&&typeof edge.data.role==='string'?`Asserts ${edge.data.role}`:edgeLabels[edge.kind];
+export const edgeLabels:Record<QueryEdgeKind,string>={returned:'Returned by search',chunked_into:'Contains passage',source_of:'Recorded source of',extends:'Extends',derived_from:'Derived from',contradicts:'Contradicts',supports:'Supports',superseded_by:'Superseded by',mentions:'Mentions exact name',asserts:'Asserts concept',relation:'Recorded relation',implied:'Inferred relation'};
+export const evidenceEdgeLabel=(edge:QueryEvidenceEdge):string=>(edge.kind==='relation'||edge.kind==='implied')&&typeof edge.data.predicate==='string'?`${edge.kind==='implied'?'Inferred: ':''}${edge.data.predicate.replaceAll('_',' ')}`:edge.kind==='asserts'&&typeof edge.data.role==='string'?`Asserts ${edge.data.role}`:edgeLabels[edge.kind];
 
 export function edgeCategory(edge:QueryEvidenceEdge):string {
   if(edge.kind==='returned')return 'Retrieval';
@@ -23,6 +23,7 @@ export function edgeCategory(edge:QueryEvidenceEdge):string {
   if(edge.kind==='mentions')return 'Exact text mention';
   if(edge.kind==='asserts')return 'Claim assertion';
   if(edge.kind==='relation')return 'Recorded concept relation';
+  if(edge.kind==='implied')return 'Inferred concept relation';
   return 'Recorded claim relationship';
 }
 
@@ -51,7 +52,7 @@ export function parseQueryEvidence(value:unknown):QueryEvidence|null {
   seen.clear();
   for(const edge of value.edges.slice(0,512)){
     if(!object(edge)||typeof edge.source!=='string'||typeof edge.target!=='string'||typeof edge.kind!=='string'
-      ||!Object.hasOwn(edgeLabels,edge.kind)||edge.source===edge.target&&edge.kind!=='relation'){discarded++;continue;}
+      ||edge.kind==='implied'||!Object.hasOwn(edgeLabels,edge.kind)||edge.source===edge.target&&edge.kind!=='relation'){discarded++;continue;}
     const source=byId.get(edge.source),target=byId.get(edge.target),kind=edge.kind as QueryEdgeKind;
     if(!source||!target||!validEndpoints(kind,source,target)){discarded++;continue;}
     const data=object(edge.data)?edge.data:{};

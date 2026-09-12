@@ -4,7 +4,7 @@ import {parseKnowledgePath,pathNetwork} from '../src/memory/knowledge-path.ts';
 import {parseEntitySearch,type Knowledge} from '../src/memory/knowledge.ts';
 const projection={version:'v1',classifier:'c1',kinds:'k1',id_scheme:'id1',digest:'abc',revision:2};
 const filters={status:'current',as_of:'2026-09-11T12:00:00Z'};
-const graph:Knowledge={space:'alpha',identity:JSON.stringify(['v1','c1','k1','id1','abc']),revision:2,mode:'current',asOf:filters.as_of,entities:[],relations:[],attributes:[],analysis:null,coverage:{truncated:false,reasons:[],counts:{}}};
+const graph:Knowledge={space:'alpha',identity:JSON.stringify(['v1','c1','k1','id1','abc']),revision:2,mode:'current',asOf:filters.as_of,entities:[],relations:[],attributes:[],analysis:null,inference:null,coverage:{truncated:false,reasons:[],counts:{}}};
 const name=(id:string)=>({id:'ent:'+id,key:id,label:id.toUpperCase()});
 const policy={max_hops:4,limit:3,hub_degree:200};
 const request={from:'ent:a',to:'ent:c',...policy};
