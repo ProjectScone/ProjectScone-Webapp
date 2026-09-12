@@ -10,9 +10,9 @@ const contract=require('../tests/fixtures/http-capabilities.json');
 let browser;
 before(async()=>{const engine=process.env.SCONE_BROWSER_ENGINE||'chromium';browser=await engines[engine].launch({headless:true,executablePath:process.env.SCONE_BROWSER_PATH});});
 after(async()=>{await browser?.close();});
-async function fixture(t,{supported=true,mobile=false}={}){
+async function fixture(t,{supported=true,mobile=false,ocr=false}={}){
  const html=fs.readFileSync(process.env.SCONE_DOCUMENTS_HTML||path.resolve(__dirname,'../dist/console.html'),'utf8').replaceAll('__SCONE_TOKEN__','import-fixture');
- const state={failRead:false,loseWrite:false,deny:false,hold:null,holdDownload:null,corruptDownload:false},requests=[],uploads=new Map(),sources=new Map(),sourceKeys=new Map();
+ const state={failRead:false,loseWrite:false,deny:false,hold:null,holdDownload:null,corruptDownload:false,wrongOcr:false},requests=[],uploads=new Map(),sources=new Map(),sourceKeys=new Map();
  const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,'http://fixture');
   if(url.pathname==='/memory'){res.setHeader('content-type','text/html');return res.end(html);}
@@ -21,7 +21,7 @@ async function fixture(t,{supported=true,mobile=false}={}){
   if(url.pathname==='/v1/status')return res.end(JSON.stringify({space:'imports',episodes:sources.size}));
   if(url.pathname==='/v1/capabilities')return res.end(JSON.stringify({...contract.python,features:{...contract.python.features,'episodes.list':true,'episodes.read':true,'episodes.attachments':true,'documents.provenance':true,'documents.files':supported}}));
   if(url.pathname==='/v1/sources')return res.end('{"items":[],"has_more":false,"next_before":null}');
-  if(url.pathname==='/v1/documents/formats')return res.end(JSON.stringify({max_input_bytes:100000,formats:{'.txt':{available:true,parser:'text'},'.pdf':{available:false,parser:'pdf-text'}}}));
+  if(url.pathname==='/v1/documents/formats')return res.end(JSON.stringify({max_input_bytes:100000,formats:{'.txt':{available:true,parser:'text'},'.pdf':{available:ocr,parser:'pdf-text'}},...(ocr?{pdf_ocr:{available:true,modes:['missing_text','all_pages'],reading_orders:['provider','columns_ltr','columns_rtl']}}:{})}));
   if(req.method==='POST'){
    if(state.deny){res.writeHead(403);return res.end('{"error":"read-only key"}');}
    const chunks=[];for await(const chunk of req)chunks.push(chunk);const body=Buffer.concat(chunks);
@@ -31,11 +31,12 @@ async function fixture(t,{supported=true,mobile=false}={}){
    }
    if(url.pathname==='/v1/documents'){
     if(state.hold)await state.hold;
-    const {attachment_id,filename}=JSON.parse(body.toString()),{original,text}=uploads.get(attachment_id),identity=JSON.stringify([attachment_id,filename]),previous=sourceKeys.get(identity),id=previous||sources.size+1;sourceKeys.set(identity,id);
+    const {attachment_id,filename,pdf_ocr}=JSON.parse(body.toString()),{original,text}=uploads.get(attachment_id),identity=JSON.stringify([attachment_id,filename]),previous=sourceKeys.get(identity),id=previous||sources.size+1;sourceKeys.set(identity,id);
     const manifest={attachment_id:createHash('sha256').update('manifest:'+attachment_id).digest('hex'),media_type:'application/json',bytes:100};
-    const receipt={added:{episode_id:id,deduplicated:Boolean(previous)},original,manifest,format:'txt',filename,segments:1};
-    const episode={episode_id:id,kind:'file',content:text,metadata:{document_original:attachment_id,document_manifest:manifest.attachment_id,document_format:'txt'},attachments:[original,manifest]};
-    const evidence={original,manifest,filename,format:'txt',parser:'fixture-text',segments:[{locator:'line:1',text}]};sources.set(id,{episode,evidence});
+    requests[requests.length-1].ocr=pdf_ocr;const format=filename.endsWith('.pdf')?'pdf':'txt';
+    const receipt={...(pdf_ocr?{pdf_ocr}:{}),added:{episode_id:id,deduplicated:Boolean(previous)},original,manifest,format,filename,segments:1};
+    const episode={episode_id:id,kind:'file',content:text,metadata:{document_original:attachment_id,document_manifest:manifest.attachment_id,document_format:format},attachments:[original,manifest]};
+    const evidence={original,manifest,filename,format,parser:'fixture-text',metadata:pdf_ocr?{pdf_ocr:JSON.stringify({...pdf_ocr,reading_order:state.wrongOcr?'provider':pdf_ocr.reading_order,dpi:150})}:{},segments:[{locator:'line:1',text,metadata:pdf_ocr?{extraction:'ocr',ocr_engine:'fixture-local'}:{}}]};sources.set(id,{episode,evidence});
     if(state.loseWrite){res.destroy();return;}return res.end(JSON.stringify(receipt));
    }
   }
@@ -96,4 +97,24 @@ test('original downloads are byte-exact, cancellable, digest checked and revoked
  await original.getByRole('button',{name:'Clear original download'}).click();assert.equal(await save.count(),0);assert.ok((await page.evaluate(()=>window.originalUrls.revoked)).includes(href));
  let release;state.holdDownload=new Promise(resolve=>{release=resolve;});await original.getByRole('button',{name:'Prepare original file',exact:true}).click();await original.getByText('Verifying and receiving the original file…',{exact:true}).waitFor();await original.getByRole('button',{name:'Cancel original download'}).click();release();state.holdDownload=null;assert.equal(await save.count(),0);
  state.corruptDownload=true;await original.getByRole('button',{name:'Prepare original file',exact:true}).click();await original.getByRole('alert').filter({hasText:'digest'}).waitFor();assert.equal(await save.count(),0);
+});
+
+for(const mobile of [false,true])test(`OCR choices are per-file, frozen during writes and checked against retained extraction, mobile=${mobile}`,async t=>{
+ const {page,q,state,requests}=await fixture(t,{mobile,ocr:true});
+ await choose(q,[file('scan.pdf','Café Polaris'),file('native.pdf','Native text')]);
+ const scan=q.getByLabel('PDF extraction for scan.pdf'),native=q.getByLabel('PDF extraction for native.pdf');
+ assert.equal(await scan.inputValue(),'text');assert.equal(await native.inputValue(),'text');
+ await scan.selectOption('all_pages');await q.getByLabel('OCR reading order for scan.pdf').selectOption('columns_ltr');
+ let release;state.hold=new Promise(resolve=>{release=resolve;});await start(q);
+ await q.getByText('Extracting and indexing',{exact:true}).waitFor();assert.equal(await scan.count(),0);assert.equal(await native.isDisabled(),true);
+ release();state.hold=null;await q.getByText('2 of 2 verified · 0 ready',{exact:true}).waitFor();
+ assert.deepEqual(requests.filter(r=>r.path==='/v1/documents'&&r.method==='POST').map(r=>r.ocr),[{mode:'all_pages',reading_order:'columns_ltr'},undefined]);
+ await q.getByText('Inspect extracted source',{exact:true}).first().click();await q.getByText('OCR · fixture-local',{exact:true}).waitFor();
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+});
+test('OCR provenance mismatch preserves acknowledgment without retrying extraction',async t=>{
+ const {q,state,requests}=await fixture(t,{ocr:true});state.wrongOcr=true;
+ await choose(q,file('scan.pdf','Café Polaris'));await q.getByLabel('PDF extraction for scan.pdf').selectOption('missing_text');await q.getByLabel('OCR reading order for scan.pdf').selectOption('columns_rtl');await start(q);
+ await q.getByRole('button',{name:'Retry source verification'}).waitFor();assert.equal(postCount(requests),1);
+ await q.getByRole('button',{name:'Retry source verification'}).click();await q.getByRole('alert').filter({hasText:'OCR settings'}).waitFor();assert.equal(postCount(requests),1);
 });

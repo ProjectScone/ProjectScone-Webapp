@@ -1,3 +1,4 @@
+import {parsePdfOcrEvidence,type PdfOcrEvidence} from './document-ocr.ts';
 export interface DocumentAttachment {attachment_id:string;media_type:string;bytes:number}
 export interface DocumentBinding {original:DocumentAttachment;manifest:DocumentAttachment;format:string}
 export interface DocumentSource {content:string;binding:DocumentBinding}
@@ -7,10 +8,11 @@ export interface DocumentCell {
  isHeader:boolean;text:string;start:number;end:number;segment:number;
  headers:CellReference[];context:CellReference[];mergedLocators:string[];
 }
-export interface EvidenceSegment {locator:string;text:string;start:number;member:string;headerBasis:string;tableName:string;tableRange:string;tableRole:string;cachedFormula:boolean}
+export interface EvidenceSegment {locator:string;text:string;start:number;member:string;headerBasis:string;tableName:string;tableRange:string;tableRole:string;cachedFormula:boolean;extraction:string;ocrEngine:string}
 export interface DocumentEvidence {
  filename:string;format:string;parser:string;segments:EvidenceSegment[];cells:Map<string,DocumentCell>;
  tables:{locator:string;cells:DocumentCell[]}[];notes:{locator:string;status:string;reason:string}[];
+ pdfOcr?:PdfOcrEvidence;
 }
 const encoder=new TextEncoder(),decoder=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true});
 function record(value:unknown):Record<string,unknown>{if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid document evidence record');return value as Record<string,unknown>;}
@@ -36,6 +38,8 @@ export function parseDocumentEvidence(value:unknown,source:DocumentSource):Docum
  const v=record(value);sameAttachment(v.original,source.binding.original);sameAttachment(v.manifest,source.binding.manifest);
  const format=text(v.format,64);if(format!==source.binding.format)throw Error('Document format does not match this source');
  const filename=text(v.filename,1024),parser=text(v.parser,128),segments:EvidenceSegment[]=[],cells=new Map<string,DocumentCell>();
+ const metadata=v.metadata===undefined?{}:record(v.metadata),pdfOcr=metadata.pdf_ocr===undefined?undefined:parsePdfOcrEvidence(metadata.pdf_ocr);
+ if(pdfOcr&&format!=='pdf')throw Error('PDF OCR settings do not match the document format');
  const occupied=new Set<string>(),identities=new Set<string>(),tables=new Map<string,DocumentCell[]>();
  const notes:DocumentEvidence['notes']=[];let offset=0,evidenceBytes=0;
  for(const value of list(v.segments,20000)){
@@ -43,7 +47,7 @@ export function parseDocumentEvidence(value:unknown,source:DocumentSource):Docum
   if(offset+encoded.length>2000000)throw Error('Document text exceeds its byte limit');
   const member=metadata.member===undefined?'':text(metadata.member),headerBasis=metadata.header_basis===undefined?'':text(metadata.header_basis);
   const optionalText=(key:string)=>metadata[key]===undefined?'':text(metadata[key]);
-  const segment=segments.length;segments.push({locator,text:content,start:offset,member,headerBasis,tableName:optionalText('table_name'),tableRange:optionalText('table_range'),tableRole:optionalText('table_role'),cachedFormula:metadata.formula==='cached-value'});
+  const segment=segments.length;segments.push({locator,text:content,start:offset,member,headerBasis,tableName:optionalText('table_name'),tableRange:optionalText('table_range'),tableRole:optionalText('table_role'),cachedFormula:metadata.formula==='cached-value',extraction:optionalText('extraction'),ocrEngine:optionalText('ocr_engine')});
   if(metadata.table_notes!==undefined||metadata.table_status==='text_fallback')notes.push({locator,status:metadata.table_status===undefined?'':text(metadata.table_status),reason:metadata.table_notes===undefined?'Structure unavailable':text(metadata.table_notes)});
   let previous=0;
   for(const value of list(s.table_cells??[],20000)){
@@ -76,7 +80,7 @@ export function parseDocumentEvidence(value:unknown,source:DocumentSource):Docum
    }
   }}
  }
- return {filename,format,parser,segments,cells,tables:Array.from(tables,([locator,cells])=>({locator,cells:cells.sort((a,b)=>a.row-b.row||a.column-b.column)})),notes};
+ return {filename,format,parser,segments,cells,tables:Array.from(tables,([locator,cells])=>({locator,cells:cells.sort((a,b)=>a.row-b.row||a.column-b.column)})),notes,pdfOcr};
 }
 export function cellExcerpt(cell:DocumentCell,evidence:DocumentEvidence){
  const segment=evidence.segments[cell.segment],bytes=encoder.encode(segment.text),start=cell.start-segment.start,end=cell.end-segment.start;
