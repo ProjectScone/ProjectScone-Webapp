@@ -24,9 +24,11 @@ function RunView({api,space,id,expected,onChanged}:{api:ApiClient;space:string;i
    if(expected)matchSubmission(original,expected);
    if(controller.signal.aborted)return;setRequest(original);
    const poll=async():Promise<void>=>{
+    let terminal=false;
     try{
      const progress=parseRunStatus(await api.request<unknown>(runAddress(id),options()),space,id);matchRun(progress,original);
      if(controller.signal.aborted)return;setStatus(progress);setOutputs(null);setIssue('');
+     terminal=!progress.active_local&&(progress.status!=='running'||progress.outcome_unknown);
      if(!progress.active_local&&['completed','verification_unavailable'].includes(progress.status)){
       const verified=parseRunResult(await api.request<unknown>(runAddress(id)+'/result',options()),original);
       if(!controller.signal.aborted)setOutputs(verified.tasks);
@@ -35,7 +37,7 @@ function RunView({api,space,id,expected,onChanged}:{api:ApiClient;space:string;i
       else setIssue('Automatic status checks paused. Use Check status to continue.');
      }
     }catch(error){if(!controller.signal.aborted){setOutputs(null);setIssue(message(error));}}
-    finally{if(!controller.signal.aborted)setBusy(false);}
+    finally{if(!controller.signal.aborted){setBusy(false);if(terminal)onChanged();}}
    };
    await poll();
   })().catch(error=>{if(!controller.signal.aborted){setIssue(message(error));setBusy(false);}});
@@ -53,10 +55,10 @@ function RunView({api,space,id,expected,onChanged}:{api:ApiClient;space:string;i
  };
  return <section className="agent-run-view" aria-label="Selected run"><h3>Run {id}</h3>
   <div className="agent-actions"><button disabled={busy||cancelling} onClick={()=>setVersion(n=>n+1)}>{busy?'Checking…':'Check status'}</button>{status?.active_local&&<button disabled={cancelling} onClick={()=>void cancel()}>{cancelling?'Cancelling…':'Cancel run'}</button>}</div>
-  {status&&<p role="status">{status.status} · {status.completed_steps.length} tasks completed{status.inflight?` · Working on ${status.inflight}`:''}{status.active_local?' · Active on this server':''}</p>}
+  {status&&<p role="status">{status.status} · {status.completed_steps.length} tasks completed{status.inflight_steps.length?` · Working on ${status.inflight_steps.join(', ')}`:''}{status.active_local?' · Active on this server':''}</p>}
   {status?.outcome_unknown&&<p className="agent-notice">A model call was interrupted and its outcome is unknown. This run will not be replayed. A new run is a separate execution.</p>}
   {status?.error_class&&<p>Run detail: {status.error_class}</p>}
-  {request&&<details open><summary>Original request · {request.plan.workflow_id} · Revision {request.revision}</summary><p className="agent-output">{request.question}</p><ul>{request.plan.tasks.map(task=><li key={task.task_id}>{task.task_id}: {task.agent_id} · {task.model_id}{task.depends_on.length?` · Receives ${task.depends_on.join(', ')}`:''}</li>)}</ul></details>}
+  {request&&<details open><summary>Original request · {request.plan.workflow_id} · Revision {request.revision} · Up to {request.max_parallel} simultaneous tasks</summary><p className="agent-output">{request.question}</p><ul>{request.plan.tasks.map(task=><li key={task.task_id}>{task.task_id}: {task.agent_id} · {task.model_id}{task.depends_on.length?` · Receives ${task.depends_on.join(', ')}`:''}</li>)}</ul></details>}
   {outputs&&<div aria-label="Verified run results">{outputs.map(output=><article key={output.task_id}><h4>{output.task_id} · {output.model_id}</h4><p>{output.source_status==='retained'?`${output.evidence_ids.length} retained evidence references`:'No retained evidence · Treat this as ungrounded model output'} · {output.model_calls} model calls · {output.tool_calls} tool calls</p><div className="agent-output">{output.text}</div></article>)}</div>}
   {issue&&<p role="alert" className="agent-notice">{issue}</p>}
  </section>;
@@ -75,8 +77,8 @@ function RunHistory({api,space,version,onSelect}:{api:ApiClient;space:string;ver
  useEffect(()=>{const controller=new AbortController();active.current=controller;setItems([]);setAfter(null);void load(controller,null);return()=>controller.abort();},[api,space,version]);
  return <section aria-label="Run history"><h3>Run history in {space}</h3><ul className="agent-run-list">{items.map(run=><li key={run.run_id}><button onClick={()=>onSelect(run.run_id)}>{run.run_id} · {run.workflow_id}<small>{run.status} · Revision {run.plan_revision}</small></button></li>)}</ul>{!busy&&!items.length&&!issue&&<p>No runs saved yet.</p>}{busy&&<p role="status">Loading runs…</p>}{after&&<button disabled={busy} onClick={()=>{if(active.current)void load(active.current,after);}}>Load more runs</button>}{issue&&<p role="alert">{issue}</p>}</section>;
 }
-export function RunPanel({api,space,plan,dirty}:{api:ApiClient;space:string;plan:SavedPlan|null;dirty:boolean}){
- const [runId,setRunId]=useState<string>(()=>crypto.randomUUID()),[question,setQuestion]=useState(''),[busy,setBusy]=useState(false),[attempted,setAttempted]=useState(false),[issue,setIssue]=useState(''),[submitted,setSubmitted]=useState<RunSubmission|null>(null),[selected,setSelected]=useState<{id:string;version:number;expected?:RunSubmission}|null>(null),[history,setHistory]=useState(0),[lookup,setLookup]=useState('');
+export function RunPanel({api,space,plan,dirty,maxParallel}:{api:ApiClient;space:string;plan:SavedPlan|null;dirty:boolean;maxParallel:number}){
+ const [runId,setRunId]=useState<string>(()=>crypto.randomUUID()),[parallel,setParallel]=useState(1),[question,setQuestion]=useState(''),[busy,setBusy]=useState(false),[attempted,setAttempted]=useState(false),[issue,setIssue]=useState(''),[submitted,setSubmitted]=useState<RunSubmission|null>(null),[selected,setSelected]=useState<{id:string;version:number;expected?:RunSubmission}|null>(null),[history,setHistory]=useState(0),[lookup,setLookup]=useState('');
  const active=useRef<AbortController|null>(null);
  useEffect(()=>()=>active.current?.abort(),[]);
  const inspect=(id:string,expected?:RunSubmission)=>{runAddress(id);setSelected(current=>({id,expected:expected??(submitted?.run_id===id?submitted:undefined),version:(current?.version??0)+1}));};
@@ -84,16 +86,16 @@ export function RunPanel({api,space,plan,dirty}:{api:ApiClient;space:string;plan
   if(!plan||dirty||!plan.configuration_current||busy||attempted)return;
   setIssue('');const controller=new AbortController();active.current=controller;
   try{
-   const payload=validateStart(runId,plan.plan.workflow_id,plan.revision,question);const expected:RunSubmission={space,run_id:runId,question,revision:plan.revision,plan:plan.plan,bindings:plan.bindings};setSubmitted(expected);setBusy(true);setAttempted(true);
+   const payload=validateStart(runId,plan.plan.workflow_id,plan.revision,question,parallel);const expected:RunSubmission={space,run_id:runId,question,revision:plan.revision,plan:plan.plan,bindings:plan.bindings,max_parallel:parallel};setSubmitted(expected);setBusy(true);setAttempted(true);
    const status=parseRunStatus(await api.request<unknown>('/v1/agent-runs',{...secureRequest,method:'POST',body:JSON.stringify(payload),signal:AbortSignal.any([controller.signal,AbortSignal.timeout(15000)])}),space,runId);
-   if(status.workflow_id!==payload.workflow_id||status.plan_revision!==payload.plan_revision)throw Error('The admitted run does not match this saved workflow revision.');
+   if(status.workflow_id!==payload.workflow_id||status.plan_revision!==payload.plan_revision||status.max_parallel!==parallel)throw Error('The admitted run does not match this saved workflow revision.');
    if(!controller.signal.aborted){inspect(runId,expected);setHistory(n=>n+1);}
   }catch(error){if(!controller.signal.aborted)setIssue(message(error)+' Check this run identifier before starting another execution.');}
   finally{if(!controller.signal.aborted)setBusy(false);}
  };
  return <section className="agent-runs" aria-label="Workflow runs"><h2>Run a workflow</h2><p>{plan?`Selected: ${plan.plan.workflow_id} · Revision ${plan.revision}`:'Select or save a workflow to run it.'}</p>
   {dirty&&<p className="agent-notice">Save your workflow changes before starting a run.</p>}
-  <form onSubmit={event=>{event.preventDefault();void start();}}><fieldset disabled={busy||attempted}><label>Run identifier<input value={runId} maxLength={128} required onChange={event=>setRunId(event.target.value)}/></label><label>Question<textarea value={question} rows={3} maxLength={4000} required onChange={event=>setQuestion(event.target.value)}/></label><button className="primary" disabled={!plan||dirty||!plan.configuration_current}>{busy?'Starting…':'Start run'}</button></fieldset></form>
+  <form onSubmit={event=>{event.preventDefault();void start();}}><fieldset disabled={busy||attempted}>{maxParallel>1&&<label>Maximum simultaneous tasks<select aria-label="Maximum simultaneous tasks" value={parallel} onChange={event=>setParallel(Number(event.target.value))}>{Array.from({length:maxParallel},(_,index)=><option key={index+1} value={index+1}>{index+1}{index===0?' · Sequential':''}</option>)}</select></label>}<label>Run identifier<input value={runId} maxLength={128} required onChange={event=>setRunId(event.target.value)}/></label><label>Question<textarea value={question} rows={3} maxLength={4000} required onChange={event=>setQuestion(event.target.value)}/></label><button className="primary" disabled={!plan||dirty||!plan.configuration_current}>{busy?'Starting…':'Start run'}</button></fieldset></form>
   {attempted&&<div className="agent-actions"><button disabled={busy} onClick={()=>inspect(runId)}>Check submitted run</button><button disabled={busy} onClick={()=>{setRunId(crypto.randomUUID());setAttempted(false);setIssue('');}}>Prepare a new run</button><span>A new run calls the selected models again.</span></div>}
   {issue&&<p role="alert" className="agent-notice">{issue}</p>}
   <form className="agent-run-lookup" onSubmit={event=>{event.preventDefault();try{inspect(lookup);setIssue('');}catch(error){setIssue(message(error));}}}><label>Find run by identifier<input value={lookup} maxLength={128} required onChange={event=>setLookup(event.target.value)}/></label><button>Open run</button></form>

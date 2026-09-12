@@ -34,9 +34,24 @@ test('native UTC serializers match and deadline states remain inspectable',()=>{
 });
 test('submitted run cannot substitute a different question, task or model binding',async()=>{
  const {matchSubmission}=await import('../src/agents/runs.ts');
- const expected={space:'alpha',run_id:'run-1',question:snapshot.question,revision:1,plan:snapshot.plan.plan,bindings:snapshot.plan.bindings};
+ const expected={space:'alpha',run_id:'run-1',question:snapshot.question,revision:1,plan:snapshot.plan.plan,bindings:snapshot.plan.bindings,max_parallel:1};
  const request=parseRunRequest(snapshot,'alpha','run-1');matchSubmission(request,expected);
  assert.throws(()=>matchSubmission({...request,question:'A different question'},expected));
  assert.throws(()=>matchSubmission({...request,plan:{...request.plan,tasks:[{...task,model_id:'fast'}]}},expected));
  assert.throws(()=>matchSubmission({...request,bindings:{find:'b'.repeat(64)}},expected));
+});
+
+test('parallel policy and invocation limits are validated and bound',async()=>{
+ const {parseRunPolicy,matchSubmission}=await import('../src/agents/runs.ts');
+ assert.equal(parseRunPolicy({space:'alpha',max_parallel_tasks:2,max_active_runs:4},'alpha'),2);
+ assert.throws(()=>parseRunPolicy({space:'bravo',max_parallel_tasks:2,max_active_runs:4},'alpha'));
+ assert.throws(()=>parseRunPolicy({space:'alpha',max_parallel_tasks:9,max_active_runs:4},'alpha'));
+ const request=parseRunRequest(snapshot,'alpha','run-1');
+ assert.throws(()=>matchSubmission({...request,max_parallel:2},request));
+ assert.throws(()=>matchRun(parseRunStatus({...status,max_parallel:2},'alpha'),request));
+ assert.equal(validateStart('r','report',1,'Question',2).max_parallel,2);
+ assert.throws(()=>parseRunStatus({...status,inflight:'find',inflight_steps:[]},'alpha'));
+});
+test('in-flight task inventory cannot exceed the recorded parallel bound',()=>{
+ assert.throws(()=>parseRunStatus({...status,status:'running',active_local:true,completed_steps:[],inflight:'find',inflight_steps:['find','other'],max_parallel:1},'alpha'));
 });

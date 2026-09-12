@@ -6,7 +6,7 @@ const engines=require(process.env.SCONE_PLAYWRIGHT_MODULE||'playwright');
 const contract=require('../tests/fixtures/http-capabilities.json');let browser;
 before(async()=>{browser=await engines[process.env.SCONE_BROWSER_ENGINE||'chromium'].launch({headless:true,executablePath:process.env.SCONE_BROWSER_PATH});});
 after(async()=>{await browser?.close();});
-async function fixture(t,{mobile=false,supported=true,paged=false,runs=false}={}){
+async function fixture(t,{mobile=false,supported=true,paged=false,runs=false,maxParallel=1}={}){
  const html=fs.readFileSync(path.resolve(__dirname,'../dist/console.html'),'utf8').replaceAll('__SCONE_TOKEN__','agent-fixture');
  const state={saved:null,forged:false,hold:null,pageStarted:false,conflict:false,runs:new Map(),starts:0,cancels:0,complete:true,loseStart:false,forgeResult:false,substitute:false};
  const server=http.createServer(async(req,res)=>{
@@ -16,7 +16,8 @@ async function fixture(t,{mobile=false,supported=true,paged=false,runs=false}={}
   assert.equal(req.headers.authorization,'Bearer agent-fixture');res.setHeader('content-type','application/json');
   const send=value=>res.end(JSON.stringify(value));
   if(url.pathname==='/v1/status')return send({space:'alpha',episodes:0});
-  if(url.pathname==='/v1/capabilities')return send({...contract.python,features:{...contract.python.features,'agents.catalog':supported,'agents.plans':supported,'agents.runs':runs}});
+  if(url.pathname==='/v1/capabilities')return send({...contract.python,features:{...contract.python.features,'agents.catalog':supported,'agents.plans':supported,'agents.runs':runs,'agents.parallel':runs&&maxParallel>1}});
+  if(url.pathname==='/v1/agents/run-policy')return send({space:'alpha',max_parallel_tasks:maxParallel,max_active_runs:4});
   if(url.pathname==='/v1/agents/catalog')return send({agents:[{agent_id:'research',default_model:'fast',models:[{model_id:'fast',label:'Fast local',revision:'1'},{model_id:'careful',label:'Careful local',revision:'1'}]}]});
   if(url.pathname==='/v1/agent-plans'){
    if(url.searchParams.has('after')){state.pageStarted=true;if(state.hold)await state.hold;return send({items:[],next_after:null});}
@@ -26,9 +27,9 @@ async function fixture(t,{mobile=false,supported=true,paged=false,runs=false}={}
    if(req.method==='GET')return send({items:[...state.runs.values()].map(run=>run.status),next_after:null});
    let raw='';for await(const part of req)raw+=part;const body=JSON.parse(raw);state.starts++;
    assert.equal(body.plan_revision,state.saved.revision);assert.equal(body.workflow_id,state.saved.plan.workflow_id);
-   const original={space:'alpha',run_id:body.run_id,question:body.question,created_at:'2026-09-11T00:00:00Z',scope:{},exclude_session_id:null,cancel_requested_at:null,plan:structuredClone(state.saved)};delete original.plan.configuration_current;
+   const original={space:'alpha',run_id:body.run_id,question:body.question,max_parallel:body.max_parallel??1,created_at:'2026-09-11T00:00:00Z',scope:{},exclude_session_id:null,cancel_requested_at:null,plan:structuredClone(state.saved)};delete original.plan.configuration_current;
    if(state.substitute){original.question="Different question";original.plan.plan.tasks[0].model_id="fast";original.plan.plan.tasks[0].prompt="Different task";original.plan.bindings[original.plan.plan.tasks[0].task_id]="b".repeat(64);}
-   const status={space:'alpha',run_id:body.run_id,created_at:original.created_at,workflow_id:body.workflow_id,plan_revision:body.plan_revision,status:state.complete?'completed':'running',active_local:!state.complete,completed_steps:state.complete?original.plan.plan.tasks.map(task=>task.task_id):[],inflight:state.complete?null:original.plan.plan.tasks[0].task_id,outcome_unknown:false,error_class:null};
+   const status={space:'alpha',run_id:body.run_id,created_at:original.created_at,workflow_id:body.workflow_id,plan_revision:body.plan_revision,max_parallel:original.max_parallel,status:state.complete?'completed':'running',active_local:!state.complete,completed_steps:state.complete?original.plan.plan.tasks.map(task=>task.task_id):[],inflight:state.complete?null:original.plan.plan.tasks[0].task_id,outcome_unknown:false,error_class:null};
    state.runs.set(body.run_id,{original,status});if(state.loseStart){res.writeHead(503);return send({error:'Admission response unavailable'});}res.writeHead(202);return send(status);
   }
   if(runs&&url.pathname.startsWith('/v1/agent-runs/')){
@@ -116,4 +117,19 @@ for(const lost of [false,true])test(`submitted request substitution is withheld,
  if(lost){await page.getByRole('alert').filter({hasText:'Check this run identifier'}).waitFor();await page.getByRole('button',{name:'Check submitted run',exact:true}).click();}
  await page.getByRole('alert').filter({hasText:'recorded run does not match the submitted'}).waitFor();
  assert.equal(await page.getByLabel('Verified run results').count(),0);assert.equal(state.starts,1);
+});
+
+test('parallel run selection follows the host ceiling and survives inspection',async t=>{
+ const {page,state}=await fixture(t,{runs:true,maxParallel:2});await fill(page);await save(page);await page.getByText('Saved revision 1.',{exact:true}).waitFor();
+ const selector=page.getByLabel('Maximum simultaneous tasks',{exact:true});assert.deepEqual(await selector.locator('option').evaluateAll(options=>options.map(option=>option.value)),['1','2']);
+ await selector.selectOption('2');await page.getByLabel('Question',{exact:true}).fill('Compare evidence');const id=await page.getByLabel('Run identifier',{exact:true}).inputValue();
+ await page.getByRole('button',{name:'Start run',exact:true}).click();await page.getByLabel('Verified run results').waitFor();
+ assert.equal(state.runs.get(id).original.max_parallel,2);await page.getByText(/Up to 2 simultaneous tasks/).waitFor();assert.equal(state.starts,1);
+});
+
+test('history refreshes after a polled run finishes',async t=>{
+ const {page,state}=await fixture(t,{runs:true});state.complete=false;await fill(page);await save(page);await page.getByText('Saved revision 1.',{exact:true}).waitFor();
+ await page.getByLabel('Question',{exact:true}).fill('Track completion');const id=await page.getByLabel('Run identifier',{exact:true}).inputValue();await page.getByRole('button',{name:'Start run',exact:true}).click();await page.getByRole('button',{name:'Cancel run',exact:true}).waitFor();
+ const run=state.runs.get(id);run.status={...run.status,status:'completed',active_local:false,completed_steps:['task-1'],inflight:null};
+ await page.getByLabel('Verified run results').waitFor();await page.getByLabel('Run history').getByText('completed · Revision 1',{exact:true}).waitFor();assert.equal(state.starts,1);
 });
