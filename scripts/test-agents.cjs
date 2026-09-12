@@ -6,9 +6,9 @@ const engines=require(process.env.SCONE_PLAYWRIGHT_MODULE||'playwright');
 const contract=require('../tests/fixtures/http-capabilities.json');let browser;
 before(async()=>{browser=await engines[process.env.SCONE_BROWSER_ENGINE||'chromium'].launch({headless:true,executablePath:process.env.SCONE_BROWSER_PATH});});
 after(async()=>{await browser?.close();});
-async function fixture(t,{mobile=false,supported=true,paged=false}={}){
+async function fixture(t,{mobile=false,supported=true,paged=false,runs=false}={}){
  const html=fs.readFileSync(path.resolve(__dirname,'../dist/console.html'),'utf8').replaceAll('__SCONE_TOKEN__','agent-fixture');
- const state={saved:null,forged:false,hold:null,pageStarted:false,conflict:false};
+ const state={saved:null,forged:false,hold:null,pageStarted:false,conflict:false,runs:new Map(),starts:0,cancels:0,complete:true,loseStart:false,forgeResult:false,substitute:false};
  const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,'http://fixture');
   if(url.pathname==='/agents'){res.setHeader('content-type','text/html');return res.end(html);}
@@ -16,11 +16,27 @@ async function fixture(t,{mobile=false,supported=true,paged=false}={}){
   assert.equal(req.headers.authorization,'Bearer agent-fixture');res.setHeader('content-type','application/json');
   const send=value=>res.end(JSON.stringify(value));
   if(url.pathname==='/v1/status')return send({space:'alpha',episodes:0});
-  if(url.pathname==='/v1/capabilities')return send({...contract.python,features:{...contract.python.features,'agents.catalog':supported,'agents.plans':supported}});
+  if(url.pathname==='/v1/capabilities')return send({...contract.python,features:{...contract.python.features,'agents.catalog':supported,'agents.plans':supported,'agents.runs':runs}});
   if(url.pathname==='/v1/agents/catalog')return send({agents:[{agent_id:'research',default_model:'fast',models:[{model_id:'fast',label:'Fast local',revision:'1'},{model_id:'careful',label:'Careful local',revision:'1'}]}]});
   if(url.pathname==='/v1/agent-plans'){
    if(url.searchParams.has('after')){state.pageStarted=true;if(state.hold)await state.hold;return send({items:[],next_after:null});}
    return send({items:state.saved?[state.saved]:[],next_after:paged?'a'.repeat(64)+':'+'b'.repeat(64):null});
+  }
+  if(runs&&url.pathname==='/v1/agent-runs'){
+   if(req.method==='GET')return send({items:[...state.runs.values()].map(run=>run.status),next_after:null});
+   let raw='';for await(const part of req)raw+=part;const body=JSON.parse(raw);state.starts++;
+   assert.equal(body.plan_revision,state.saved.revision);assert.equal(body.workflow_id,state.saved.plan.workflow_id);
+   const original={space:'alpha',run_id:body.run_id,question:body.question,created_at:'2026-09-11T00:00:00Z',scope:{},exclude_session_id:null,cancel_requested_at:null,plan:structuredClone(state.saved)};delete original.plan.configuration_current;
+   if(state.substitute){original.question="Different question";original.plan.plan.tasks[0].model_id="fast";original.plan.plan.tasks[0].prompt="Different task";original.plan.bindings[original.plan.plan.tasks[0].task_id]="b".repeat(64);}
+   const status={space:'alpha',run_id:body.run_id,created_at:original.created_at,workflow_id:body.workflow_id,plan_revision:body.plan_revision,status:state.complete?'completed':'running',active_local:!state.complete,completed_steps:state.complete?original.plan.plan.tasks.map(task=>task.task_id):[],inflight:state.complete?null:original.plan.plan.tasks[0].task_id,outcome_unknown:false,error_class:null};
+   state.runs.set(body.run_id,{original,status});if(state.loseStart){res.writeHead(503);return send({error:'Admission response unavailable'});}res.writeHead(202);return send(status);
+  }
+  if(runs&&url.pathname.startsWith('/v1/agent-runs/')){
+   const parts=url.pathname.split('/'),run=state.runs.get(decodeURIComponent(parts[3]));if(!run){res.writeHead(404);return send({error:'missing'});}
+   if(parts[4]==='request')return send(run.original);
+   if(parts[4]==='cancel'){state.cancels++;run.status={...run.status,status:'cancelled',active_local:false,outcome_unknown:true,error_class:'CancelledError'};return send(run.status);}
+   if(parts[4]==='result')return send({space:'alpha',run_id:run.status.run_id,status:'completed',reused_steps:[],results:Object.fromEntries(run.original.plan.plan.tasks.map(task=>[task.task_id,{...task,binding:state.forgeResult?'b'.repeat(64):run.original.plan.bindings[task.task_id],text:'Model output <script>never execute</script>',source_status:'none',evidence_ids:[],evidence_packets:[],model_calls:1,tool_calls:0}]))});
+   return send(run.status);
   }
   if(url.pathname==='/v1/agent-plans/report'&&req.method==='PUT'){
    let raw='';for await(const part of req)raw+=part;
@@ -63,4 +79,41 @@ test('a late page cannot remove a newer acknowledged save',async t=>{
 });
 test('unavailable capability exposes no workflow write control',async t=>{
  const {page}=await fixture(t,{supported:false});await page.getByRole('heading',{name:'Workflows unavailable',exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:'Save workflow',exact:true}).count(),0);
+});
+
+for(const mobile of [false,true])test(`run saved model choices and show original verified output, mobile=${mobile}`,async t=>{
+ const {page,state}=await fixture(t,{mobile,runs:true});await fill(page);await save(page);await page.getByText('Saved revision 1.',{exact:true}).waitFor();
+ await page.getByLabel('Question',{exact:true}).fill('What happened?');const id=await page.getByLabel('Run identifier',{exact:true}).inputValue();
+ await page.getByRole('button',{name:'Start run',exact:true}).click();await page.getByLabel('Verified run results').waitFor();
+ assert.equal(state.starts,1);assert.equal(state.runs.get(id).original.plan.plan.tasks[0].model_id,'careful');
+ await page.getByRole('button',{name:'Check status',exact:true}).click();await page.getByLabel('Verified run results').waitFor();assert.equal(state.starts,1);
+ assert(await page.getByText('Model output <script>never execute</script>',{exact:true}).isVisible());
+ await page.getByLabel('Task instructions',{exact:true}).fill('An unsaved change');
+ assert.equal(state.runs.get(id).original.plan.plan.tasks[0].prompt,'Find the decisions.');
+ assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+});
+test('lost admission response keeps ID and only performs a read on check',async t=>{
+ const {page,state}=await fixture(t,{runs:true});await fill(page);await save(page);await page.getByText('Saved revision 1.',{exact:true}).waitFor();state.loseStart=true;
+ await page.getByLabel('Question',{exact:true}).fill('What happened?');const id=await page.getByLabel('Run identifier',{exact:true}).inputValue();await page.getByRole('button',{name:'Start run',exact:true}).click();
+ await page.getByRole('alert').filter({hasText:'Check this run identifier'}).waitFor();assert.equal(await page.getByLabel('Run identifier',{exact:true}).inputValue(),id);
+ await page.getByRole('button',{name:'Check submitted run',exact:true}).click();await page.getByLabel('Verified run results').waitFor();assert.equal(state.starts,1);
+});
+test('cancel reports unknown outcome and never resubmits the run',async t=>{
+ const {page,state}=await fixture(t,{runs:true});state.complete=false;await fill(page);await save(page);await page.getByText('Saved revision 1.',{exact:true}).waitFor();
+ await page.getByLabel('Question',{exact:true}).fill('What happened?');await page.getByRole('button',{name:'Start run',exact:true}).click();await page.getByRole('button',{name:'Cancel run',exact:true}).click();
+ await page.getByText(/A model call was interrupted and its outcome is unknown/).waitFor();assert.equal(state.cancels,1);assert.equal(state.starts,1);assert.equal(await page.getByLabel('Verified run results').count(),0);
+});
+test('mismatched result binding is withheld',async t=>{
+ const {page,state}=await fixture(t,{runs:true});state.forgeResult=true;await fill(page);await save(page);await page.getByText('Saved revision 1.',{exact:true}).waitFor();
+ await page.getByLabel('Question',{exact:true}).fill('What happened?');await page.getByRole('button',{name:'Start run',exact:true}).click();await page.getByRole('alert').filter({hasText:'run response could not be verified'}).waitFor();
+ assert.equal(await page.getByLabel('Verified run results').count(),0);assert.equal(state.starts,1);
+});
+
+for(const lost of [false,true])test(`submitted request substitution is withheld, lost response=${lost}`,async t=>{
+ const {page,state}=await fixture(t,{runs:true});state.substitute=true;state.loseStart=lost;
+ await fill(page);await save(page);await page.getByText('Saved revision 1.',{exact:true}).waitFor();await page.getByLabel('Question',{exact:true}).fill('Original question');
+ await page.getByRole('button',{name:'Start run',exact:true}).click();
+ if(lost){await page.getByRole('alert').filter({hasText:'Check this run identifier'}).waitFor();await page.getByRole('button',{name:'Check submitted run',exact:true}).click();}
+ await page.getByRole('alert').filter({hasText:'recorded run does not match the submitted'}).waitFor();
+ assert.equal(await page.getByLabel('Verified run results').count(),0);assert.equal(state.starts,1);
 });

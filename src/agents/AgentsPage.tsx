@@ -4,10 +4,11 @@ import {parseCapabilities} from '../capabilities';
 import {WorkspaceState} from '../components/WorkspaceState';
 import {parseCatalog,parsePlanPage,parseSavedEdit,planAddress,record,validatePlan,type AgentChoice,type AgentPlan,type AgentTask,type SavedPlan} from './plans';
 import './agents.css';
+import {RunPanel} from './RunPanel';
 
 const secureRequest={cache:'no-store',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer'} as const;
 
-type Ready={space:string;catalog:AgentChoice[];items:SavedPlan[];next_after:string|null};
+type Ready={runsAvailable:boolean;space:string;catalog:AgentChoice[];items:SavedPlan[];next_after:string|null};
 function Editor({api,space,catalog,initial,onSave,onDirty}:{api:ApiClient;space:string;catalog:AgentChoice[];initial:SavedPlan|null;onSave:(plan:SavedPlan)=>void;onDirty:()=>void}){
  const first=catalog[0];
  const newTask=(id:string):AgentTask=>({task_id:id,agent_id:first?.agent_id??'',model_id:first?.default_model??'',prompt:'',depends_on:[]});
@@ -65,7 +66,7 @@ export function AgentsPage({api,enabled}:{api:ApiClient;enabled:boolean}){
    if(typeof status.space!=='string'||!status.space)throw Error('The connected space could not be verified.');
    if(!caps.features['agents.catalog']||!caps.features['agents.plans'])throw Error('Agent workflow configuration is not enabled on this server.');
    const [catalog,page]=await Promise.all([api.request<unknown>('/v1/agents/catalog',options).then(parseCatalog),api.request<unknown>('/v1/agent-plans?limit=20',options).then(value=>parsePlanPage(value,status.space as string))]);
-   if(!controller.signal.aborted)setLoaded({api,data:{space:status.space,catalog,...page}});
+   if(!controller.signal.aborted)setLoaded({api,data:{runsAvailable:caps.features['agents.runs'],space:status.space,catalog,...page}});
   })().catch(error=>{if(!controller.signal.aborted)setError(error instanceof Error?error.message:'Agent configuration could not be loaded.');}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
   return()=>controller.abort();
  },[api,enabled,refresh]);
@@ -81,9 +82,9 @@ export function AgentsPage({api,enabled}:{api:ApiClient;enabled:boolean}){
  useEffect(()=>{if(!dirty)return;const warn=(event:BeforeUnloadEvent)=>{event.preventDefault();};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);},[dirty]);
  return <main id="main" className="agents-page"><header><div className="eyebrow">Agents</div><h1>Workflows and models</h1><p>Choose an agent and model for each task, then decide which earlier outputs it receives. Tasks run in dependency order.</p></header>
   {!enabled?<WorkspaceState icon="scopes" title="Connect a memory space" description="Use Memory connection to access saved workflows."/>:loading?<WorkspaceState icon="scopes" title="Loading workflows" description="Checking this host’s agent configuration." busy/>:!data?<WorkspaceState icon="scopes" title="Workflows unavailable" description={error} actions={<button onClick={()=>setRefresh(n=>n+1)}>Try again</button>}/>:<>
-   <p className="agent-notice">This page saves workflow configuration. Execution is currently available through the native framework; browser run controls are not enabled.</p>
+   {!data.runsAvailable&&<p className="agent-notice">This server supports saved workflow configuration. Run controls are not enabled.</p>}
    <div className="agents-layout"><aside aria-label="Saved workflows"><h2>Saved in {data.space}</h2><button onClick={()=>{if(discard()){setDirty(false);setSelection(value=>({id:value.id+1,plan:null}));}}}>New workflow</button><ul>{data.items.map(saved=><li key={saved.plan.workflow_id}><button onClick={()=>{if(discard()){setDirty(false);setSelection(value=>({id:value.id+1,plan:saved}));}}}>{saved.plan.workflow_id}<small>Revision {saved.revision} · {saved.plan.tasks.length} tasks{!saved.configuration_current?' · Review required':''}</small></button></li>)}</ul>{!data.items.length&&<p>No saved workflows yet.</p>}{data.next_after&&<button disabled={paging} onClick={()=>void page()}>{paging?'Loading…':'Load more'}</button>}<button onClick={()=>{if(discard())setRefresh(n=>n+1);}}>Reload saved workflows</button></aside>
-   <Editor key={selection.id} api={api} space={data.space} catalog={data.catalog} initial={selection.plan} onDirty={()=>setDirty(true)} onSave={saved=>{setDirty(false);setLoaded(current=>current?.api===api?{api,data:{...current.data,items:[saved,...current.data.items.filter(item=>item.plan.workflow_id!==saved.plan.workflow_id)]}}:current);}}/></div>{error&&<p role="alert">{error}</p>}
+   <Editor key={selection.id} api={api} space={data.space} catalog={data.catalog} initial={selection.plan} onDirty={()=>setDirty(true)} onSave={saved=>{setDirty(false);setSelection(current=>({...current,plan:saved}));setLoaded(current=>current?.api===api?{api,data:{...current.data,items:[saved,...current.data.items.filter(item=>item.plan.workflow_id!==saved.plan.workflow_id)]}}:current);}}/></div>{data.runsAvailable&&<RunPanel key={data.space} api={api} space={data.space} plan={selection.plan} dirty={dirty}/>} {error&&<p role="alert">{error}</p>}
   </>}
  </main>;
 }

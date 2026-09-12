@@ -2,7 +2,7 @@ export interface ModelChoice {model_id:string;label:string;revision:string}
 export interface AgentChoice {agent_id:string;default_model:string;models:ModelChoice[]}
 export interface AgentTask {task_id:string;agent_id:string;model_id:string;prompt:string;depends_on:string[]}
 export interface AgentPlan {workflow_id:string;tasks:AgentTask[]}
-export interface SavedPlan {space:string;revision:number;plan:AgentPlan;configuration_current:boolean;updated_at:string}
+export interface SavedPlan {space:string;revision:number;plan:AgentPlan;configuration_current:boolean;updated_at:string;bindings:Record<string,string>}
 export function record(value:unknown):Record<string,unknown>{
  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid agent configuration response.');
  return value as Record<string,unknown>;
@@ -61,7 +61,7 @@ export function parseSavedPlan(value:unknown,space:string):SavedPlan{
  if(Object.keys(bindings).length!==plan.tasks.length||plan.tasks.some(task=>typeof bindings[task.task_id]!=='string'||!/^[a-f0-9]{64}$/.test(bindings[task.task_id] as string)))throw Error('Invalid saved model binding.');
  const updated_at=text(row.updated_at,64);
  if(!Number.isFinite(Date.parse(updated_at)))throw Error('Invalid plan update time.');
- return {space,revision:row.revision as number,plan,configuration_current:row.configuration_current,updated_at};
+ return {space,revision:row.revision as number,plan,configuration_current:row.configuration_current,updated_at,bindings:Object.fromEntries(plan.tasks.map(task=>[task.task_id,bindings[task.task_id] as string]))};
 }
 export function parsePlanPage(value:unknown,space:string):{items:SavedPlan[];next_after:string|null}{
  const row=record(value),items=list(row.items,100).map(item=>parseSavedPlan(item,space));
