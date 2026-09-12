@@ -1,0 +1,89 @@
+import {useEffect,useRef,useState} from 'react';
+import {ApiError,type ApiClient} from '../api';
+import {parseCapabilities} from '../capabilities';
+import {WorkspaceState} from '../components/WorkspaceState';
+import {parseCatalog,parsePlanPage,parseSavedEdit,planAddress,record,validatePlan,type AgentChoice,type AgentPlan,type AgentTask,type SavedPlan} from './plans';
+import './agents.css';
+
+const secureRequest={cache:'no-store',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer'} as const;
+
+type Ready={space:string;catalog:AgentChoice[];items:SavedPlan[];next_after:string|null};
+function Editor({api,space,catalog,initial,onSave,onDirty}:{api:ApiClient;space:string;catalog:AgentChoice[];initial:SavedPlan|null;onSave:(plan:SavedPlan)=>void;onDirty:()=>void}){
+ const first=catalog[0];
+ const newTask=(id:string):AgentTask=>({task_id:id,agent_id:first?.agent_id??'',model_id:first?.default_model??'',prompt:'',depends_on:[]});
+ const [plan,setPlan]=useState<AgentPlan>(initial?.plan??{workflow_id:'',tasks:[newTask('task-1')]}),[revision,setRevision]=useState(initial?.revision??0),[issue,setIssue]=useState(''),[busy,setBusy]=useState(false),[notice,setNotice]=useState(''),[reviewRequired,setReviewRequired]=useState(initial?.configuration_current===false);
+ const active=useRef<AbortController|null>(null);
+ useEffect(()=>()=>active.current?.abort(),[]);
+ const update=(index:number,change:Partial<AgentTask>)=>{onDirty();setNotice('');setPlan(value=>({...value,tasks:value.tasks.map((task,i)=>i===index?{...task,...change}:task)}));};
+ const save=async()=>{
+  if(busy)return;
+  setIssue('');setNotice('');
+  const controller=new AbortController();active.current=controller;
+  try{
+   const valid=validatePlan(plan,catalog);setBusy(true);
+   const result=await api.request<unknown>(planAddress(valid.workflow_id),{...secureRequest,method:'PUT',body:JSON.stringify({expected_revision:revision,plan:valid}),cache:'no-store',signal:AbortSignal.any([controller.signal,AbortSignal.timeout(15000)])});
+   const saved=parseSavedEdit(result,space,valid,revision);
+   if(!controller.signal.aborted){setPlan(saved.plan);setRevision(saved.revision);setReviewRequired(!saved.configuration_current);onSave(saved);setNotice(`Saved revision ${saved.revision}.`);}
+  }catch(error){if(!controller.signal.aborted)setIssue(error instanceof ApiError&&error.status===409?'This plan changed. Reload its saved version before editing again. Your draft has been kept.':error instanceof ApiError&&error.status===403?'This key cannot save this plan. Your draft has been kept.':error instanceof Error?error.message:'The save response is unavailable. Reload the saved plan to check whether it was saved.');}
+  finally{if(!controller.signal.aborted)setBusy(false);}
+ };
+ return <form className="agent-editor" onChange={onDirty} onSubmit={event=>{event.preventDefault();void save();}}>
+  <h2>{initial?'Edit workflow':'New workflow'}</h2>
+  {reviewRequired&&<p className="agent-notice" role="status">The host changed an agent or model configuration. Review every task and save a new revision before running it.</p>}
+  <fieldset disabled={busy}>
+   <label>Workflow identifier<input required maxLength={128} value={plan.workflow_id} disabled={revision>0} onChange={event=>setPlan(value=>({...value,workflow_id:event.target.value}))}/></label>
+   {plan.tasks.map((task,index)=>{
+    const agent=catalog.find(choice=>choice.agent_id===task.agent_id);
+    return <section className="agent-task" key={index} aria-label={`Task ${index+1}`}>
+     <div className="agent-task-heading"><h3>Task {index+1}</h3><button type="button" disabled={plan.tasks.length===1} onClick={()=>{onDirty();setPlan(value=>({...value,tasks:value.tasks.filter((_,i)=>i!==index).map(other=>({...other,depends_on:other.depends_on.filter(id=>id!==task.task_id)}))}));}}>Remove task {index+1}</button></div>
+     <div className="agent-fields"><label>Task identifier<input required maxLength={128} value={task.task_id} onChange={event=>update(index,{task_id:event.target.value})}/></label>
+      <label>Agent<select aria-label="Agent" value={task.agent_id} onChange={event=>{const choice=catalog.find(item=>item.agent_id===event.target.value);if(choice)update(index,{agent_id:choice.agent_id,model_id:choice.default_model});}}>
+       {!agent&&<option value={task.agent_id}>{task.agent_id||'Choose an agent'} (unavailable)</option>}{catalog.map(choice=><option key={choice.agent_id} value={choice.agent_id}>{choice.agent_id}</option>)}
+      </select></label>
+      <label>Model<select aria-label="Model" value={task.model_id} onChange={event=>update(index,{model_id:event.target.value})}>
+       {!agent?.models.some(model=>model.model_id===task.model_id)&&<option value={task.model_id}>{task.model_id||'Choose a model'} (unavailable)</option>}{agent?.models.map(model=><option key={model.model_id} value={model.model_id}>{model.label} · {model.model_id}</option>)}
+      </select></label></div>
+     <label>Task instructions<textarea aria-label="Task instructions" required maxLength={2000} rows={3} value={task.prompt} onChange={event=>update(index,{prompt:event.target.value})}/></label>
+     <fieldset className="agent-dependencies"><legend>Receive outputs from</legend>{plan.tasks.filter((_,i)=>i!==index).map((other,i)=><label key={i}><input type="checkbox" checked={task.depends_on.includes(other.task_id)} onChange={event=>update(index,{depends_on:event.target.checked?[...task.depends_on,other.task_id]:task.depends_on.filter(id=>id!==other.task_id)})}/>{other.task_id||'Unnamed task'}</label>)}{plan.tasks.length===1&&<p>No other tasks yet.</p>}</fieldset>
+    </section>;
+   })}
+   <div className="agent-actions"><button type="button" disabled={plan.tasks.length>=32||!first} onClick={()=>{onDirty();let count=plan.tasks.length+1;while(plan.tasks.some(task=>task.task_id===`task-${count}`))count++;setPlan(value=>({...value,tasks:[...value.tasks,newTask(`task-${count}`)]}));}}>Add task</button><button className="primary" disabled={!first}>{busy?'Saving…':'Save workflow'}</button><span>{revision?`Revision ${revision}`:'Not saved'}</span></div>
+  </fieldset>
+  {issue&&<p role="alert" className="agent-notice">{issue}</p>}{notice&&<p role="status">{notice}</p>}
+ </form>;
+}
+
+export function AgentsPage({api,enabled}:{api:ApiClient;enabled:boolean}){
+ const [loaded,setLoaded]=useState<{api:ApiClient;data:Ready}|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(true),[selection,setSelection]=useState<{id:number;plan:SavedPlan|null}>({id:0,plan:null}),[refresh,setRefresh]=useState(0),[paging,setPaging]=useState(false),[dirty,setDirty]=useState(false);
+ const active=useRef<AbortController|null>(null),data=loaded?.api===api?loaded.data:null;
+ useEffect(()=>{
+  const controller=new AbortController();active.current=controller;setLoaded(null);setError('');setLoading(true);setPaging(false);setDirty(false);setSelection({id:0,plan:null});
+  if(!enabled){setLoading(false);return()=>controller.abort();}
+  const options={...secureRequest,signal:AbortSignal.any([controller.signal,AbortSignal.timeout(15000)])};
+  void (async()=>{
+   const status=record(await api.request<unknown>('/v1/status',options)),caps=parseCapabilities(await api.request<unknown>('/v1/capabilities',options));
+   if(typeof status.space!=='string'||!status.space)throw Error('The connected space could not be verified.');
+   if(!caps.features['agents.catalog']||!caps.features['agents.plans'])throw Error('Agent workflow configuration is not enabled on this server.');
+   const [catalog,page]=await Promise.all([api.request<unknown>('/v1/agents/catalog',options).then(parseCatalog),api.request<unknown>('/v1/agent-plans?limit=20',options).then(value=>parsePlanPage(value,status.space as string))]);
+   if(!controller.signal.aborted)setLoaded({api,data:{space:status.space,catalog,...page}});
+  })().catch(error=>{if(!controller.signal.aborted)setError(error instanceof Error?error.message:'Agent configuration could not be loaded.');}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
+  return()=>controller.abort();
+ },[api,enabled,refresh]);
+ const page=async()=>{
+  if(!data?.next_after||paging)return;setPaging(true);setError('');const controller=active.current;
+  try{
+   const result=parsePlanPage(await api.request<unknown>('/v1/agent-plans?limit=20&after='+encodeURIComponent(data.next_after),{...secureRequest,signal:controller?AbortSignal.any([controller.signal,AbortSignal.timeout(15000)]):AbortSignal.timeout(15000)}),data.space);
+   if(controller===active.current&&!controller?.signal.aborted)setLoaded(current=>current?.api===api&&current.data.space===data.space?{api,data:{...current.data,items:[...current.data.items,...result.items.filter(item=>!current.data.items.some(prior=>prior.plan.workflow_id===item.plan.workflow_id))],next_after:result.next_after}}:current);
+  }catch(error){if(!controller?.signal.aborted)setError(error instanceof Error?error.message:'Could not load more workflows.');}
+  finally{if(!controller?.signal.aborted)setPaging(false);}
+ };
+ const discard=()=>!dirty||window.confirm('Discard your unsaved workflow changes?');
+ useEffect(()=>{if(!dirty)return;const warn=(event:BeforeUnloadEvent)=>{event.preventDefault();};window.addEventListener('beforeunload',warn);return()=>window.removeEventListener('beforeunload',warn);},[dirty]);
+ return <main id="main" className="agents-page"><header><div className="eyebrow">Agents</div><h1>Workflows and models</h1><p>Choose an agent and model for each task, then decide which earlier outputs it receives. Tasks run in dependency order.</p></header>
+  {!enabled?<WorkspaceState icon="scopes" title="Connect a memory space" description="Use Memory connection to access saved workflows."/>:loading?<WorkspaceState icon="scopes" title="Loading workflows" description="Checking this host’s agent configuration." busy/>:!data?<WorkspaceState icon="scopes" title="Workflows unavailable" description={error} actions={<button onClick={()=>setRefresh(n=>n+1)}>Try again</button>}/>:<>
+   <p className="agent-notice">This page saves workflow configuration. Execution is currently available through the native framework; browser run controls are not enabled.</p>
+   <div className="agents-layout"><aside aria-label="Saved workflows"><h2>Saved in {data.space}</h2><button onClick={()=>{if(discard()){setDirty(false);setSelection(value=>({id:value.id+1,plan:null}));}}}>New workflow</button><ul>{data.items.map(saved=><li key={saved.plan.workflow_id}><button onClick={()=>{if(discard()){setDirty(false);setSelection(value=>({id:value.id+1,plan:saved}));}}}>{saved.plan.workflow_id}<small>Revision {saved.revision} · {saved.plan.tasks.length} tasks{!saved.configuration_current?' · Review required':''}</small></button></li>)}</ul>{!data.items.length&&<p>No saved workflows yet.</p>}{data.next_after&&<button disabled={paging} onClick={()=>void page()}>{paging?'Loading…':'Load more'}</button>}<button onClick={()=>{if(discard())setRefresh(n=>n+1);}}>Reload saved workflows</button></aside>
+   <Editor key={selection.id} api={api} space={data.space} catalog={data.catalog} initial={selection.plan} onDirty={()=>setDirty(true)} onSave={saved=>{setDirty(false);setLoaded(current=>current?.api===api?{api,data:{...current.data,items:[saved,...current.data.items.filter(item=>item.plan.workflow_id!==saved.plan.workflow_id)]}}:current);}}/></div>{error&&<p role="alert">{error}</p>}
+  </>}
+ </main>;
+}

@@ -459,6 +459,26 @@ Playwright/browser environment variables as the other browser suites. It covers
 confirmation, paged impact, interrupted responses, explicit resumption, read-role
 denial, invalid receipts, capability/space checks, navigation and mobile layout.
 
+## Agent workflow configuration
+
+`/agents` discovers `agents.catalog` and `agents.plans` before offering the
+workflow editor. A host supplies named agents and allowed models; the user picks
+an explicit model for every task and declares which task outputs it receives.
+Plans support up to 32 tasks with acyclic dependencies. Saving and editing use
+server revisions, with conflicts retaining the local draft. Removed model choices
+remain visible as unavailable until explicitly changed. Saves never silently
+replace the selected model or task graph.
+
+Saved plans belong to the authenticated space and are loaded without browser
+storage. The server enforces write permissions; read-only users can inspect plans.
+The Python host must configure `AgentCatalog` and `AgentPlanStore` in `create_app`.
+This editor saves configuration; starting, cancelling and inspecting runs in the
+browser remains separate work. Native execution uses `AgentWorkflow`.
+
+Run `node --test scripts/test-agents.cjs` with the same Playwright environment
+variables used above. It verifies packaged desktop/mobile editing, persistence,
+forged save receipts, conflict/draft handling, delayed paging and capability gates.
+
 ## Contributing, license and citation
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and review requirements.

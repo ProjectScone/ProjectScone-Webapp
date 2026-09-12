@@ -6,6 +6,7 @@ import mark from '../assets/scone-mark-small.png';
 const destinations: {path:string; label:string; icon:WorkspaceIconName}[] = [
   {path:'/memory',label:'Memory',icon:'memory'},
   {path:'/playground',label:'Playground',icon:'graph'},
+  {path:'/agents',label:'Agents',icon:'scopes'},
   {path:'/conversations',label:'Conversations',icon:'chat'},
   {path:'/learn',label:'Guide',icon:'guide'},
 ];

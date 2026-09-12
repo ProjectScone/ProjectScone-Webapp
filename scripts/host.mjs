@@ -32,7 +32,7 @@ export function backendAddress(value) {
 }
 const isApi = pathname => pathname === '/healthz' || pathname === '/v1' || pathname.startsWith('/v1/');
 const isPublic = pathname => /^\/(?:learn|docs)(?:\/|$)/.test(pathname);
-const isPage = pathname => /^(?:\/|\/memory\/?|\/playground\/?|\/memory\/sources\/[^/]+(?:\/forget)?\/?|\/conversations(?:\/[^/]+)?\/?)$/.test(pathname) || isPublic(pathname);
+const isPage = pathname => /^(?:\/|\/memory\/?|\/playground\/?|\/agents\/?|\/memory\/sources\/[^/]+(?:\/forget)?\/?|\/conversations(?:\/[^/]+)?\/?)$/.test(pathname) || isPublic(pathname);
 const bootstrapPattern = /<script id="scone-bootstrap" type="application\/json">[^<]*<\/script>/;
 const encodeBootstrap = key => '<script id="scone-bootstrap" type="application/json">' + JSON.stringify({key}).replaceAll('<', '\\u003c').replaceAll('\u2028', '\\u2028').replaceAll('\u2029', '\\u2029') + '</script>';
 const hopHeaders = new Set(['connection','keep-alive','proxy-authenticate','proxy-authorization','te','trailer','transfer-encoding','upgrade']);
