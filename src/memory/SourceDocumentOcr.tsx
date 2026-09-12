@@ -4,8 +4,9 @@ import {documentBinding,type DocumentSource} from './document-evidence';
 import {drawnRegions,parseOcrDocument,type OcrDocument,type OcrPage} from './document-ocr-evidence';
 import {ocrModeLabel,ocrOrderLabel} from './document-ocr';
 import './document-ocr-evidence.css';
+import {OcrTableInspection} from './OcrTableInspection';
 
-export function SourceDocumentOcr({api,source,episodeId}:{api:ApiClient;source:DocumentSource;episodeId:number}){
+export function SourceDocumentOcr({api,source,episodeId,space,tables=false}:{api:ApiClient;source:DocumentSource;episodeId:number;space:string;tables?:boolean}){
  const [enabled,setEnabled]=useState(false),[attempt,setAttempt]=useState(0);
  const request=useMemo(()=>({api,source,episodeId,enabled,attempt}),[api,source,episodeId,enabled,attempt]);
  const [snapshot,setSnapshot]=useState<{request:object;data?:OcrDocument;error?:string}|null>(null);
@@ -30,10 +31,10 @@ export function SourceDocumentOcr({api,source,episodeId}:{api:ApiClient;source:D
   <p>Read retained page text and recorded OCR positions. This view does not run OCR again. Pages without retained text are omitted.</p>
   <div className="ocr-actions"><button className="btn quiet" onClick={()=>{setEnabled(true);setAttempt(n=>n+1);}}>{enabled?'Retry PDF extraction read':'Read PDF extraction'}</button>{enabled&&<button className="btn quiet" onClick={()=>{setEnabled(false);setSnapshot(null);}}>{result?'Clear PDF extraction':'Cancel PDF extraction read'}</button>}</div>
   {enabled&&!result&&<p role="status">Verifying retained PDF extraction…</p>}{result?.error&&<p role="alert">{result.error}</p>}
-  {result?.data&&<OcrPages key={attempt} data={result.data}/>}
+  {result?.data&&<OcrPages key={attempt} data={result.data} api={api} source={source} episodeId={episodeId} space={space} tables={tables}/>}
  </section></details>;
 }
-function OcrPages({data}:{data:OcrDocument}){
+function OcrPages({data,api,source,episodeId,space,tables}:{data:OcrDocument;api:ApiClient;source:DocumentSource;episodeId:number;space:string;tables:boolean}){
  const [index,setIndex]=useState(0),[regionPage,setRegionPage]=useState(0),[selected,setSelected]=useState<number|null>(null);
  const page=data.pages[index],region=selected===null?null:page?.regions[selected];
  const move=(next:number)=>{setIndex(next);setRegionPage(0);setSelected(null);};
@@ -50,6 +51,7 @@ function OcrPages({data}:{data:OcrDocument}){
    <ol className="ocr-regions" start={regionPage*20+1}>{page.regions.slice(regionPage*20,(regionPage+1)*20).map((region,offset)=>{const number=regionPage*20+offset;return <li key={number}><button className="btn quiet small" aria-pressed={selected===number} onClick={()=>setSelected(number)}><span>Region {number+1}</span><span>{region.text.length>160?region.text.slice(0,160)+'…':region.text}</span></button></li>;})}</ol>
    {page.regions.length>20&&<nav className="ocr-actions" aria-label="OCR region pages"><button className="btn quiet small" disabled={!regionPage} onClick={()=>setRegionPage(regionPage-1)}>Previous regions</button><span>Regions {regionPage*20+1}–{Math.min((regionPage+1)*20,page.regions.length)} of {page.regions.length}</span><button className="btn quiet small" disabled={(regionPage+1)*20>=page.regions.length} onClick={()=>setRegionPage(regionPage+1)}>Next regions</button><label>Region page<input type="number" min="1" max={Math.ceil(page.regions.length/20)} value={regionPage+1} onChange={event=>{const n=Number(event.target.value);if(Number.isInteger(n)&&n>=1&&n<=Math.ceil(page.regions.length/20))setRegionPage(n-1);}}/></label></nav>}
   </>}
+  {tables&&page.extraction==='ocr'&&<OcrTableInspection key={page.number} api={api} source={source} page={page} episodeId={episodeId} space={space} onSelect={index=>{setSelected(index);setRegionPage(Math.floor(index/20));}}/>}
   <details><summary>Read complete retained page text</summary><pre className="ocr-page-text">{page.text}</pre></details>
  </>;
 }

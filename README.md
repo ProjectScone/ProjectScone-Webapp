@@ -479,6 +479,29 @@ Run `node --test scripts/test-agents.cjs` with the same Playwright environment
 variables used above. It verifies packaged desktop/mobile editing, persistence,
 forged save receipts, conflict/draft handling, delayed paging and capability gates.
 
+## Retained OCR table inspection
+
+Servers advertising `documents.ocr.tables` offer **Analyze table layout** below
+retained PDF OCR evidence on the source page. The explicit read finds possible
+aligned grids, displays candidate rows and columns, and links cells back to
+recorded OCR regions. Unassigned text remains available. The JSON download
+includes source identities and region references for checking the result.
+
+This geometry-only inspection neither reruns OCR nor changes indexed text.
+Headers, merged cells, multi-line cells and missing values are not inferred;
+aligned prose can resemble a table. The UI rejects changed source bindings,
+invented cell text, invalid geometry and incomplete region coverage, and hides
+old results on retry or cancellation. The server limits analysis to 5,000 regions
+and 2 MB of text per page; candidate and row paging keep larger results usable.
+
+`node --test scripts/test-ocr-tables-native.cjs` exercises the packaged UI against
+an isolated Python native API, real local Tesseract recognition of a generated
+raster-only PDF, and durable SQLite/blob storage. Use `SCONE_TEST_PYTHON` with
+Scone's PDF OCR and API dependencies, the Playwright/browser settings above, and
+`PYTHONPATH` pointing to the matching native checkout. It checks desktop/mobile
+inspection and export, cancellation, capability absence, process restart without
+OCR repetition, and forgotten-source refusal. No live service is used.
+
 ## Contributing, license and citation
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and review requirements.
