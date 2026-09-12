@@ -1,3 +1,4 @@
+import {displayFilename} from './filename-display';
 import {MEDIA_FORMATS} from './document-media';
 import {SourceDocumentMedia} from './SourceDocumentMedia';
 import {useEffect,useMemo,useRef,useState} from 'react';
@@ -69,7 +70,7 @@ export function SourcePage({api,enabled}:{api:ApiClient;enabled:boolean}){
       :!enabled?<WorkspaceState icon="memory" title="Connect to read this source" description={`Use Connect memory to provide a key for “${address.space}”. This link contains no credentials and grants no access.`}/>
       :current?.issue?<WorkspaceState icon="documents" role="alert" title={current.issue} description={current.detail} actions={<button className="btn quiet" onClick={retry}>Retry source</button>}/>
       :!current?.original?<WorkspaceState icon="documents" role="status" busy title="Opening the original…" description="Checking the linked memory space before reading its source."/>
-      :<article><header className="source-page-heading"><div><span className="eyebrow">{space} / Episode #{episodeId}</span><h1 ref={heading} tabIndex={-1}>{current.original.title}</h1><p>{current.original.kind} · {current.original.date||'Date unavailable'}</p></div>
+      :<article><header className="source-page-heading"><div><span className="eyebrow">{space} / Episode #{episodeId}</span><h1 ref={heading} tabIndex={-1}>{displayFilename(current.original.title)}</h1><p>{current.original.kind} · {current.original.date||'Date unavailable'}</p></div>
         <div><button className="btn quiet small" onClick={async()=>{try{await navigator.clipboard.writeText(new URL(sourceAddress(address.episodeId,address.space),window.location.origin).href);setCopied('Link copied.');}catch{setCopied('Copy unavailable. Copy the source link below.');}}}>Copy source link</button><span role="status">{copied}</span></div></header>
         {copied.startsWith('Copy unavailable')&&<input aria-label="Source permalink" readOnly value={new URL(sourceAddress(address.episodeId,address.space),window.location.origin).href} onFocus={e=>e.currentTarget.select()}/>}
         <p className="source-page-note">This page shows retained source material. Source links require access to this memory space and never share your key.</p>

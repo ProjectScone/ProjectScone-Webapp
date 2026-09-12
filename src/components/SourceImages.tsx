@@ -1,4 +1,5 @@
 import {useEffect, useState} from 'react';
+import {displayFilename} from '../memory/filename-display';
 import {ApiError, PREVIEW_TYPES, type ApiClient, type ImageAttachment} from '../api';
 import './source-images.css';
 
@@ -49,7 +50,7 @@ function RasterImage({item,api}:{item:ImageAttachment;api:ApiClient}) {
   },[api,item,supported,attempt]);
   const name=item.filename||`Image ${item.attachment_id.slice(0,8)}`;
   return <figure className="source-image">
-    {!supported?<p>Preview unavailable for {item.media_type}. The attachment is recorded, but is not rendered inline.</p>:error?<div role="alert"><p>{error}</p><button onClick={()=>setAttempt(n=>n+1)}>Retry image</button></div>:url?<img src={url} alt={name} onError={()=>setError('Saved bytes could not be decoded as an image.')} />:<p role="status">Loading original image…</p>}
-    <figcaption><strong>{name}</strong><span>{item.media_type} · {(item.bytes/1024).toFixed(1)} KB</span>{url&&!error&&<a href={url} download={name.replace(/[^a-zA-Z0-9._-]/g,'_').slice(0,120)}>Save original image</a>}</figcaption>
+    {!supported?<p>Preview unavailable for {item.media_type}. The attachment is recorded, but is not rendered inline.</p>:error?<div role="alert"><p>{error}</p><button onClick={()=>setAttempt(n=>n+1)}>Retry image</button></div>:url?<img src={url} alt={displayFilename(name)} onError={()=>setError('Saved bytes could not be decoded as an image.')} />:<p role="status">Loading original image…</p>}
+    <figcaption><strong>{displayFilename(name)}</strong><span>{item.media_type} · {(item.bytes/1024).toFixed(1)} KB</span>{url&&!error&&<a href={url} download={name.replace(/[^a-zA-Z0-9._-]/g,'_').slice(0,120)}>Save original image</a>}</figcaption>
   </figure>;
 }

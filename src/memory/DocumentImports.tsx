@@ -1,3 +1,4 @@
+import {displayFilename} from './filename-display';
 import {SourceDocumentMedia} from './SourceDocumentMedia';
 import {useEffect,useRef,useState} from 'react';
 import type {ApiClient} from '../api';
@@ -87,7 +88,7 @@ function ImportWorkspace({api,onSaved,close}:{api:ApiClient;onSaved:()=>void;clo
   {rows.length>0&&<>
    <div className="import-actions"><p role="status">{verified} of {rows.length} verified · {queued} ready</p><div><button className="btn" disabled={busy||!queued||!catalog} onClick={()=>void run()}>Import {queued} ready {queued===1?'file':'files'}</button>{busy&&<button className="btn quiet" disabled={pausing} onClick={()=>{pause.current=true;setPausing(true);}}>{pausing?'Pausing after this file…':'Pause after this file'}</button>}</div></div>
    <ol className="import-list">{rows.map(row=><li key={row.id} className={'import-row import-'+row.status}>
-    <div className="import-row-heading"><div><strong>{row.file.name}</strong><small>{bytes(row.file.size)}</small></div><span role="status" className="import-state">{phaseLabel[row.status]}</span></div>
+    <div className="import-row-heading"><div><strong>{displayFilename(row.file.name)}</strong><small>{bytes(row.file.size)}</small></div><span role="status" className="import-state">{phaseLabel[row.status]}</span></div>
     {row.file.name.toLowerCase().endsWith('.pdf')&&row.status==='queued'&&catalog?.pdfOcr?.available&&<PdfOcrControls filename={row.file.name} catalog={catalog.pdfOcr} value={row.pdfOcr} disabled={busy} onChange={pdfOcr=>{if(!active.current)patch(row.id,{...row,pdfOcr});}}/>}
     {row.pdfOcr&&row.status!=='queued'&&row.status!=='verified'&&<p>{ocrModeLabel(row.pdfOcr.mode)} · {ocrOrderLabel(row.pdfOcr.reading_order)}</p>}
     {'error' in row&&<p role="alert">{row.error}</p>}
@@ -105,7 +106,7 @@ export function ImportEvidence({api,value}:{api:ApiClient;value:VerifiedImport})
  return <div className="import-evidence"><p>Source #{receipt.episodeId} · {receipt.segments} extracted {receipt.segments===1?'segment':'segments'} · {receipt.format}{receipt.deduplicated?' · Existing source reused':''}</p>
   {evidence.pdfOcr&&<p>{ocrModeLabel(evidence.pdfOcr.mode)} · {ocrOrderLabel(evidence.pdfOcr.reading_order)} · {evidence.pdfOcr.dpi} DPI. Settings match the retained extraction.</p>}
   <SourcePageLink api={api} episodeId={receipt.episodeId}/>
-  <details><summary>Inspect extracted source</summary><p>{evidence.filename} · {evidence.parser}. Original identity and extracted text match the saved source.</p><ul>{evidence.segments.slice(page*20,(page+1)*20).map((segment,index)=><li key={page*20+index}><strong>{segment.locator}</strong>{segment.extraction==='ocr'&&<small>OCR{segment.ocrEngine?` · ${segment.ocrEngine}`:''}</small>}{segment.extraction==='text_layer'&&<small>Embedded text</small>}<pre>{segment.text}</pre></li>)}</ul>{evidence.segments.length>20&&<nav aria-label="Extracted segment pages"><button className="btn quiet small" disabled={!page} onClick={()=>setPage(page-1)}>Previous segments</button><span>Page {page+1} of {Math.ceil(evidence.segments.length/20)}</span><button className="btn quiet small" disabled={(page+1)*20>=evidence.segments.length} onClick={()=>setPage(page+1)}>Next segments</button></nav>}<p className="import-digest">Original SHA-256: {receipt.original.attachment_id}</p></details>
+  <details><summary>Inspect extracted source</summary><p>{displayFilename(evidence.filename)} · {evidence.parser}. Original identity and extracted text match the saved source.</p><ul>{evidence.segments.slice(page*20,(page+1)*20).map((segment,index)=><li key={page*20+index}><strong>{segment.locator}</strong>{segment.extraction==='ocr'&&<small>OCR{segment.ocrEngine?` · ${segment.ocrEngine}`:''}</small>}{segment.extraction==='text_layer'&&<small>Embedded text</small>}<pre>{segment.text}</pre></li>)}</ul>{evidence.segments.length>20&&<nav aria-label="Extracted segment pages"><button className="btn quiet small" disabled={!page} onClick={()=>setPage(page-1)}>Previous segments</button><span>Page {page+1} of {Math.ceil(evidence.segments.length/20)}</span><button className="btn quiet small" disabled={(page+1)*20>=evidence.segments.length} onClick={()=>setPage(page+1)}>Next segments</button></nav>}<p className="import-digest">Original SHA-256: {receipt.original.attachment_id}</p></details>
   <details><summary>Download original file</summary><DocumentOriginal api={api} source={source} episodeId={receipt.episodeId}/></details>
   {evidence.media&&<SourceDocumentMedia api={api} source={source} episodeId={receipt.episodeId} space={value.space}/>}
   {evidence.tables.length>0&&<SourceDocumentEvidence api={api} episodeId={receipt.episodeId} source={source} space={value.space}/>}
@@ -114,10 +115,10 @@ export function ImportEvidence({api,value}:{api:ApiClient;value:VerifiedImport})
 
 export function PdfOcrControls({filename,catalog,value,disabled,onChange}:{filename:string;catalog:PdfOcrCatalog;value?:PdfOcrSelection;disabled:boolean;onChange:(value:PdfOcrSelection|undefined)=>void}){
  return <div className="import-ocr-controls">
-  <label>PDF extraction<select aria-label={`PDF extraction for ${filename}`} disabled={disabled} value={value?.mode??'text'} onChange={event=>onChange(event.target.value==='text'?undefined:parsePdfOcrSelection({mode:event.target.value,reading_order:value?.reading_order??catalog.readingOrders[0]}))}>
+  <label>PDF extraction<select aria-label={`PDF extraction for ${displayFilename(filename)}`} disabled={disabled} value={value?.mode??'text'} onChange={event=>onChange(event.target.value==='text'?undefined:parsePdfOcrSelection({mode:event.target.value,reading_order:value?.reading_order??catalog.readingOrders[0]}))}>
    <option value="text">Embedded text only</option>{catalog.modes.map(mode=><option value={mode} key={mode}>{ocrModeLabel(mode)}</option>)}
   </select></label>
-  {value&&<label>OCR reading order<select aria-label={`OCR reading order for ${filename}`} disabled={disabled} value={value.reading_order} onChange={event=>onChange(parsePdfOcrSelection({...value,reading_order:event.target.value}))}>
+  {value&&<label>OCR reading order<select aria-label={`OCR reading order for ${displayFilename(filename)}`} disabled={disabled} value={value.reading_order} onChange={event=>onChange(parsePdfOcrSelection({...value,reading_order:event.target.value}))}>
    {catalog.readingOrders.map(order=><option value={order} key={order}>{ocrOrderLabel(order)}</option>)}
   </select></label>}
  </div>;

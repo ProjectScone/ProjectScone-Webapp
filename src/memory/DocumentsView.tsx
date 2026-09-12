@@ -1,3 +1,4 @@
+import {displayFilename} from './filename-display';
 import {SourceContent} from '../components/SourceContent';
 import {WorkspaceState} from '../components/WorkspaceState';
 import {useCallback,useEffect,useRef,useState} from 'react';
@@ -14,7 +15,7 @@ import './documents.css';
 const KINDS=[['','All sources'],['file','Files'],['note','Notes'],['conversation','Conversations'],['observation','Observations'],['connector','Connectors']] as const;
 interface Query {kind:string;cursors:(number|undefined)[]}
 const first=(kind=''):Query=>({kind,cursors:[undefined]});
-const name=(source:SourceSummary)=>source.document_filename||source.source||`${source.kind.charAt(0).toUpperCase()+source.kind.slice(1)} #${source.episode_id}`;
+const name=(source:SourceSummary)=>displayFilename(source.document_filename||source.source||`${source.kind.charAt(0).toUpperCase()+source.kind.slice(1)} #${source.episode_id}`);
 const failure=(error:unknown)=>error instanceof Error?error.message:'Could not load sources.';
 function SourceMark(){return <svg viewBox="0 0 24 28" fill="none" aria-hidden="true"><path d="M5 1h9l8 8v17H2V1h3Z" stroke="currentColor" strokeWidth="1.4"/><path d="M14 1v8h8M7 15h10M7 20h7" stroke="currentColor" strokeWidth="1.4"/></svg>;}
 

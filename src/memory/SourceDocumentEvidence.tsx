@@ -1,3 +1,4 @@
+import {displayFilename} from './filename-display';
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {readDocumentEvidence} from './document-evidence-read';
 import type {ApiClient} from '../api';
@@ -30,7 +31,7 @@ export function SourceDocumentEvidence({api,source,episodeId,space}:{api:ApiClie
   <div className="document-controls"><button className="btn quiet" onClick={()=>{setEnabled(true);setAttempt(n=>n+1);setView(null);}}>{enabled?'Retry table evidence':'Read table evidence'}</button>{enabled&&<button className="btn quiet" onClick={()=>{setEnabled(false);setSnapshot(null);setView(null);}}>{result?'Clear table evidence':'Cancel table evidence'}</button>}</div>
   {enabled&&!result&&<p role="status">Checking document attachments and retained text…</p>}{result?.error&&<p role="alert">{result.error}</p>}
   {data&&<>
-   <p role="status">{data.filename} · {data.tables.length} structured table{data.tables.length===1?'':'s'} · {data.cells.size} cells · {data.notes.length} extraction note{data.notes.length===1?'':'s'}</p>
+   <p role="status">{displayFilename(data.filename)} · {data.tables.length} structured table{data.tables.length===1?'':'s'} · {data.cells.size} cells · {data.notes.length} extraction note{data.notes.length===1?'':'s'}</p>
    <p className="document-muted">{data.format} · {data.parser}. Text and cell references match this retained source.</p>
    {selected&&excerpt&&<aside ref={detail} tabIndex={-1} aria-label="Selected table cell" className="document-cell-detail">
     <h3>Row {selected.row+1}, column {selected.column+1} · {selected.isHeader?'Header':'Data cell'}</h3>

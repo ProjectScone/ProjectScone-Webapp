@@ -1,3 +1,4 @@
+import {displayFilename} from './filename-display';
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {Link,useLocation,useParams} from 'react-router-dom';
 import {ApiError,type ApiClient} from '../api';
@@ -45,7 +46,7 @@ function Removal({api,address}:{api:ApiClient;address:RemovalAddress}){
  };
  const view=current?.kind==='ready'?current.view:null,done=current?.kind==='done',forgotten=done||view?.status.state==='forgotten';
  return <article>
-  <header className="removal-heading"><span className="eyebrow">{address.space} / Episode #{address.episodeId}</span><h1 ref={heading} tabIndex={-1}>{forgotten?'Source removed':'Remove source'}</h1>{view&&<p className="removal-title">{view.title}</p>}</header>
+  <header className="removal-heading"><span className="eyebrow">{address.space} / Episode #{address.episodeId}</span><h1 ref={heading} tabIndex={-1}>{forgotten?'Source removed':'Remove source'}</h1>{view&&<p className="removal-title">{displayFilename(view.title)}</p>}</header>
   {!current?<WorkspaceState icon="documents" role="status" busy title={busy==='remove'?'Removing source…':'Checking source removal…'} description={busy==='remove'?'Waiting for the cleanup receipt. Leaving this page does not undo a request already sent.':'Checking this space, source and cleanup state.'}/>
    :current.kind==='issue'?<WorkspaceState icon="documents" role="alert" title={current.uncertain?'Removal unconfirmed':'Source could not be checked'} description={current.message} actions={<button className="btn quiet" onClick={()=>void read()}>Check removal status</button>}/>
    :forgotten?<section aria-label="Source removal complete"><p role="status">Removal is confirmed for episode #{address.episodeId} in “{address.space}”.</p>

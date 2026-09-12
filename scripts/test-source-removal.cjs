@@ -35,7 +35,7 @@ async function fixture(t,{mobile=false,supported=true,space='alpha',initial='pre
   if(url.pathname==='/v1/episodes/7/impact')return send({...impact,episode_id:state.badImpact?8:7});
   if(url.pathname==='/v1/episodes/7'){
    if(state.status!=='present'){res.writeHead(410);return send({error:'gone'});}
-   return send({episode_id:7,kind:'file',content:'retained text',source:'Unsafe <script>not markup</script>',created_at:time});
+   return send({episode_id:7,kind:'file',content:'retained text',source:mobile?'report\u202egnp.txt':'Unsafe <script>not markup</script>',created_at:time});
   }
   res.writeHead(404);send({error:'unknown route'});
  });
@@ -50,7 +50,7 @@ async function fixture(t,{mobile=false,supported=true,space='alpha',initial='pre
 const deletes=requests=>requests.filter(r=>r.method==='DELETE').length;
 const confirm=async page=>{await page.getByRole('checkbox').check();await page.getByRole('button',{name:'Remove this source',exact:true}).click();};
 for(const mobile of [false,true])test(`preview, confirmation, paged retained evidence and completion, mobile=${mobile}`,async t=>{
- const {page,requests}=await fixture(t,{mobile});const button=page.getByRole('button',{name:'Remove this source',exact:true});await button.waitFor();assert.equal(await button.isDisabled(),true);assert.equal(deletes(requests),0);
+ const {page,requests}=await fixture(t,{mobile});const button=page.getByRole('button',{name:'Remove this source',exact:true});await button.waitFor();assert.equal(await button.isDisabled(),true);assert.equal(deletes(requests),0);if(mobile)assert.equal(await page.locator('.removal-title').textContent(),'"report\\u202egnp.txt"');
  await page.getByText('Citing claims · 25',{exact:true}).click();assert.equal(await page.locator('.removal-inventory').first().locator('li').count(),20);
  await page.getByRole('button',{name:'Next citing claims'}).click();assert.equal(await page.locator('.removal-inventory').first().locator('li').count(),5);
  assert.equal(await page.locator('article script').count(),0);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);

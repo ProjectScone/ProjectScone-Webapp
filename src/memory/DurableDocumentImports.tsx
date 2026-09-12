@@ -1,3 +1,4 @@
+import {displayFilename} from './filename-display';
 import {useEffect,useMemo,useRef,useState} from 'react';
 import type {ApiClient} from '../api';
 import {ImportEvidence,PdfOcrControls} from './DocumentImports';
@@ -110,7 +111,7 @@ function ImportJobsWorkspace({api,onSaved}:{api:ApiClient;onSaved:()=>void}){
    {catalog&&<label className="import-picker">Choose documents<input type="file" multiple disabled={uploading} accept={Array.from(catalog.formats).filter(([,format])=>format.available).map(([extension])=>extension).join(',')} onChange={event=>{choose(event.target.files);event.target.value='';}}/><small>20 files / 100 MiB per selection queue</small></label>}
    {queueError&&<p role="alert">{queueError}</p>}
    <ol className="import-list">{queue.map(row=><li key={row.id} className="import-row">
-    <div className="import-row-heading"><strong>{row.file.name}</strong><span role="status">{{queued:'Ready',uploading:'Uploading original',admitting:'Requesting import',admitted:'Acknowledged by server',uncertain:'Admission unconfirmed'}[row.state]}</span></div>
+    <div className="import-row-heading"><strong>{displayFilename(row.file.name)}</strong><span role="status">{{queued:'Ready',uploading:'Uploading original',admitting:'Requesting import',admitted:'Acknowledged by server',uncertain:'Admission unconfirmed'}[row.state]}</span></div>
     <small className="import-digest">Import ID: {row.id}</small>
     {row.error&&<p role="alert">{row.error}</p>}
     {catalog?.pdfOcr?.available&&row.state==='queued'&&row.file.name.toLowerCase().endsWith('.pdf')&&<PdfOcrControls filename={row.file.name} catalog={catalog.pdfOcr} value={row.pdfOcr} disabled={uploading} onChange={pdfOcr=>patch(row.id,{pdfOcr})}/>}
@@ -124,15 +125,15 @@ function ImportJobsWorkspace({api,onSaved}:{api:ApiClient;onSaved:()=>void}){
   {actionError&&<p role="alert">{actionError}</p>}
   {page&&!page.items.length&&!loading&&<p>No saved import jobs on this page.</p>}
   <ol className="import-list" aria-label="Saved document jobs">{page?.items.map(job=><li key={job.id} className="import-row">
-   <div className="import-row-heading"><strong>{job.filename}</strong><span role="status">{labels[job.status]}</span></div>
+   <div className="import-row-heading"><strong>{displayFilename(job.filename)}</strong><span role="status">{labels[job.status]}</span></div>
    <small className="import-digest">{job.id} · Attempt {job.attempt} of {job.maxAttempts}</small>
    <p>{job.completedSteps.length?`Completed stages: ${job.completedSteps.join(', ')}.`:'No completed stages recorded.'}{job.inflight?` Last active stage: ${job.inflight}.`:''}</p>
    {job.outcomeUnknown&&<p>Work may have partially completed. Resume uses saved checkpoints; status alone does not verify a source.</p>}
    {job.errorClass&&<p>Reported error: {job.errorClass}</p>}
    <div className="import-actions">
-    {canResumeDocumentJob(job)&&<button className="btn quiet small" disabled={loading||!!error||!!acting} onClick={()=>void control(job,'resume')}>Resume {job.filename}</button>}
-    {job.activeLocal&&<button className="btn quiet small" disabled={loading||!!error||!!acting} onClick={()=>void control(job,'cancel')}>Cancel {job.filename}</button>}
-    {canVerifyDocumentJob(job)&&<button className="btn quiet small" disabled={loading||!!error||!!acting} onClick={()=>void verify(job)}>Verify source for {job.filename}</button>}
+    {canResumeDocumentJob(job)&&<button className="btn quiet small" disabled={loading||!!error||!!acting} onClick={()=>void control(job,'resume')}>Resume {displayFilename(job.filename)}</button>}
+    {job.activeLocal&&<button className="btn quiet small" disabled={loading||!!error||!!acting} onClick={()=>void control(job,'cancel')}>Cancel {displayFilename(job.filename)}</button>}
+    {canVerifyDocumentJob(job)&&<button className="btn quiet small" disabled={loading||!!error||!!acting} onClick={()=>void verify(job)}>Verify source for {displayFilename(job.filename)}</button>}
    </div>
    {acting===job.id&&<p role="status">Reading the server response…</p>}
    {evidence?.id===job.id&&canVerifyDocumentJob(job)&&<ImportEvidence api={api} value={evidence.value}/>}
