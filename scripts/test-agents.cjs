@@ -178,3 +178,37 @@ test('missing handoff capability prevents execution of a saved handoff',async t=
  await page.getByText('This server does not support handoff configuration.',{exact:true}).waitFor();
  await page.getByLabel('Question',{exact:true}).fill('Explain');assert(await page.getByRole('button',{name:'Start run',exact:true}).isDisabled());assert.equal(state.starts,0);
 });
+
+for(const mobile of [false,true])test(`renaming a task preserves dependent model choices, mobile=${mobile}`,async t=>{
+ const {page,state}=await fixture(t,{mobile});await fill(page);
+ await page.getByRole('button',{name:'Add task',exact:true}).click();
+ await page.getByLabel('Task instructions',{exact:true}).nth(1).fill('Summarize the evidence.');
+ const dependent=page.getByRole('region',{name:'Task 2',exact:true});
+ await dependent.getByLabel('task-1',{exact:true}).check();
+ await page.getByLabel('Task identifier',{exact:true}).first().fill('research');
+ assert(await dependent.getByLabel('research',{exact:true}).isChecked(),'renaming must retain the dependency');
+ await save(page);await page.getByText('Saved revision 1.',{exact:true}).waitFor();
+ assert.deepEqual(state.saved.plan.tasks.map(task=>({id:task.task_id,model:task.model_id,depends:task.depends_on})),[
+  {id:'research',model:'careful',depends:[]},{id:'task-2',model:'fast',depends:['research']},
+ ]);
+ await page.reload();await page.getByRole('button',{name:/report.*Revision 1/}).click();
+ assert(await page.getByRole('region',{name:'Task 2',exact:true}).getByLabel('research',{exact:true}).isChecked());
+});
+
+test('a duplicate task name leaves both dependency targets intact',async t=>{
+ const {page,state}=await fixture(t);await fill(page);
+ await page.getByRole('button',{name:'Add task',exact:true}).click();
+ await page.getByLabel('Task instructions',{exact:true}).nth(1).fill('Compare results.');
+ await page.getByRole('button',{name:'Add task',exact:true}).click();
+ await page.getByLabel('Task instructions',{exact:true}).nth(2).fill('Publish both results.');
+ const dependent=page.getByRole('region',{name:'Task 3',exact:true});
+ await dependent.getByLabel('task-1',{exact:true}).check();await dependent.getByLabel('task-2',{exact:true}).check();
+ const name=page.getByLabel('Task identifier',{exact:true}).first();
+ await name.fill('task-2');await page.getByRole('alert').filter({hasText:'already uses this identifier'}).waitFor();
+ assert.equal(await name.inputValue(),'task-1');
+ assert(await dependent.getByLabel('task-1',{exact:true}).isChecked());assert(await dependent.getByLabel('task-2',{exact:true}).isChecked());
+ await name.fill('research');assert(await dependent.getByLabel('research',{exact:true}).isChecked());
+ assert(await dependent.getByLabel('task-2',{exact:true}).isChecked());
+ await save(page);await page.getByText('Saved revision 1.',{exact:true}).waitFor();
+ assert.deepEqual(state.saved.plan.tasks[2].depends_on,['research','task-2']);
+});

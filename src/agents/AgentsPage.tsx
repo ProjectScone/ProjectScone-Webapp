@@ -2,7 +2,7 @@ import {useEffect,useRef,useState} from 'react';
 import {ApiError,type ApiClient} from '../api';
 import {parseCapabilities} from '../capabilities';
 import {WorkspaceState} from '../components/WorkspaceState';
-import {isHandoffPlan,isInputTask,isInteractivePlan,parseCatalog,parsePlanPage,parseSavedEdit,planAddress,record,validatePlan,type AgentChoice,type TaskNode,type AgentTask,type SavedPlan} from './plans';
+import {isHandoffPlan,isInputTask,isInteractivePlan,parseCatalog,parsePlanPage,parseSavedEdit,planAddress,record,replaceTask,validatePlan,type AgentChoice,type TaskNode,type AgentTask,type SavedPlan} from './plans';
 import './agents.css';
 import {RunPanel} from './RunPanel';
 import {HandoffEditor} from './HandoffEditor';
@@ -17,7 +17,10 @@ function Editor({api,space,catalog,initial,onSave,onDirty,inputsAvailable}:{api:
  const [plan,setPlan]=useState<{workflow_id:string;tasks:TaskNode[]}>((initial&&!isHandoffPlan(initial.plan)?initial.plan:null)??{workflow_id:'',tasks:[newTask('task-1')]}),[revision,setRevision]=useState(initial?.revision??0),[issue,setIssue]=useState(''),[busy,setBusy]=useState(false),[notice,setNotice]=useState(''),[reviewRequired,setReviewRequired]=useState(initial?.configuration_current===false);
  const active=useRef<AbortController|null>(null);
  useEffect(()=>()=>active.current?.abort(),[]);
- const update=(index:number,change:TaskNode)=>{onDirty();setNotice('');setPlan(value=>({...value,tasks:value.tasks.map((task,i)=>i===index?change:task)}));};
+ const update=(index:number,change:TaskNode)=>{
+  try{const tasks=replaceTask(plan.tasks,index,change);onDirty();setNotice('');setIssue('');setPlan(value=>({...value,tasks}));}
+  catch(error){setIssue(error instanceof Error?error.message:'The task could not be changed.');}
+ };
  const save=async()=>{
   if(busy)return;
   setIssue('');setNotice('');

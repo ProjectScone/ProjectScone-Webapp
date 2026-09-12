@@ -3,6 +3,17 @@ export interface AgentChoice {agent_id:string;default_model:string;models:ModelC
 export interface AgentTask {task_id:string;agent_id:string;model_id:string;prompt:string;depends_on:string[]}
 export interface HumanInputTask {kind:'input';task_id:string;prompt:string;depends_on:string[];max_response_bytes:number}
 export type TaskNode=AgentTask|HumanInputTask;
+export function replaceTask(tasks:readonly TaskNode[],index:number,replacement:TaskNode):TaskNode[]{
+ const previous=tasks[index];
+ if(!previous)throw Error('The task being edited is unavailable.');
+ const renamed=previous.task_id!==replacement.task_id;
+ if(renamed&&tasks.some((task,i)=>i!==index&&task.task_id===replacement.task_id))throw Error('Another task already uses this identifier. Choose a different name.');
+ return tasks.map((task,i)=>{
+  const current=i===index?replacement:task;
+  if(!renamed||!current.depends_on.includes(previous.task_id))return current;
+  return {...current,depends_on:current.depends_on.map(id=>id===previous.task_id?replacement.task_id:id)};
+ });
+}
 export interface InteractivePlan {kind:'interactive';workflow_id:string;tasks:TaskNode[]}
 export function isInputTask(task:TaskNode):task is HumanInputTask{return 'kind' in task&&task.kind==='input';}
 export function isInteractivePlan(plan:WorkflowPlan):plan is InteractivePlan{return 'kind' in plan&&plan.kind==='interactive';}
