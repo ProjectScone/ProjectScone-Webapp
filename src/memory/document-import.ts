@@ -1,3 +1,4 @@
+import {displayFilename} from './filename-display.ts';
 import {verifiedSpace} from './source-address.ts';
 import {verifyCurrentDocumentSource} from './document-evidence-read.ts';
 import {ApiError,type ApiClient,type ImageAttachment} from '../api.ts';
@@ -38,10 +39,10 @@ export function validateDocumentSelection(files:readonly File[],catalog:Document
  for(const file of files){
   const encoded=encoder.encode(file.name);
   if(!file.name||encoded.length>1024||decoder.decode(encoded)!==file.name||/[\u0000-\u001f\u007f]/.test(file.name))throw Error('Invalid document filename.');
-  if(!file.size||file.size>catalog.maxInputBytes)throw Error(`${file.name} is empty or exceeds the per-file byte limit.`);
+  if(!file.size||file.size>catalog.maxInputBytes)throw Error(`${displayFilename(file.name)} is empty or exceeds the per-file byte limit.`);
   const extension=file.name.slice(file.name.lastIndexOf('.')).toLowerCase(),format=catalog.formats.get(extension);
-  if(!format)throw Error(`${file.name}: this format is not supported by the connected server.`);
-  if(!format.available)throw Error(`${file.name}: its parser is unavailable on the connected server.`);
+  if(!format)throw Error(`${displayFilename(file.name)}: this format is not supported by the connected server.`);
+  if(!format.available)throw Error(`${displayFilename(file.name)}: its parser is unavailable on the connected server.`);
  }
 }
 export function parseReceipt(value:unknown,original:ImageAttachment,filename:string,expectedOcr?:PdfOcrSelection):ImportReceipt{

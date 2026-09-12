@@ -1,3 +1,4 @@
+import {displayFilename} from './filename-display';
 import {useEffect, useRef, useState, type FormEvent} from 'react';
 import {ApiError, PREVIEW_TYPES, type ApiClient} from '../api';
 import {SourceImages} from '../components/SourceImages';
@@ -66,7 +67,7 @@ export function SourceComposer({api,onSaved}: {api:ApiClient;onSaved:()=>void}) 
     <header><div><span className="eyebrow">Your knowledge, at the source</span><h2>Add a source</h2></div><button className="btn quiet small" disabled={!!phase} onClick={()=>setOpen(false)}>Close</button></header>
     <p>Keep the material you want to find later, with its source intact. Select a file or write a note; nothing is sent until you save.</p>
     {saved?<div className="source-saved" role="status"><h3>Source saved · episode #{saved.episode_id}</h3><p>{saved.deduplicated?'Matching text already existed. That episode was reused; its original source metadata is unchanged.':'A new source episode was created.'} {saved.attachmentId?'The image link was verified.':''}</p>
-      {saved.text!==undefined&&<details><summary>Read saved text</summary><p>Verified at save · recorded source: {saved.source||'not specified'}</p><pre>{saved.text}</pre></details>}
+      {saved.text!==undefined&&<details><summary>Read saved text</summary><p>Verified at save · recorded source: {displayFilename(saved.source||'not specified')}</p><pre>{saved.text}</pre></details>}
       {saved.attachmentId&&<button className="btn quiet" onClick={()=>setInspect(!inspect)}>{inspect?'Close saved preview':'Inspect saved source'}</button>}
       {inspect&&<SourceImages api={api} episodeId={saved.episode_id} initiallyOpen/>}
       <button className="btn quiet" onClick={()=>{setSaved(null);setNote('');setFile(null);setDocument(null);setError('');setInspect(false);}}>Add another source</button>
@@ -74,10 +75,10 @@ export function SourceComposer({api,onSaved}: {api:ApiClient;onSaved:()=>void}) 
       <div className="source-modes" role="group" aria-label="Source type"><button type="button" aria-pressed={mode==='note'} disabled={!!phase||uncertain} onClick={()=>{setMode('note');setError('');}}>Write a note</button><button type="button" aria-pressed={mode==='file'} disabled={!!phase||uncertain} onClick={()=>{setMode('file');setError('');}}>Import text file</button></div>
       {mode==='file'?<>
         <div className="source-file"><label>Text file<input type="file" accept={TEXT_FILE_ACCEPT} disabled={!!phase||uncertain} onChange={e=>void selectDocument(e.target.files?.[0])}/></label><small>UTF-8 · text, Markdown or code · up to 1 MB. PDF and binary formats are not supported.</small></div>
-        {document&&<section className="source-document" aria-label="File preview"><header><strong>{document.name}</strong><span>{document.bytes.toLocaleString()} bytes</span></header><pre>{document.content}</pre><p>File preview only. Saving lets the server index and process this text using its configured models. Code is not executed; a separate file download is not created.</p></section>}
+        {document&&<section className="source-document" aria-label="File preview"><header><strong>{displayFilename(document.name)}</strong><span>{document.bytes.toLocaleString()} bytes</span></header><pre>{document.content}</pre><p>File preview only. Saving lets the server index and process this text using its configured models. Code is not executed; a separate file download is not created.</p></section>}
       </>:<><label>Source note<textarea value={note} onChange={e=>setNote(e.target.value)} required maxLength={100000} disabled={!!phase||uncertain} placeholder="What does this source show, and why does it matter?"/></label>
       <div className="source-file"><label>Original image<input type="file" accept="image/png,image/jpeg,image/gif,image/webp" disabled={!!phase||uncertain} onChange={e=>{setFile(e.target.files?.[0]??null);setError('');}}/></label><small>Optional · PNG, JPEG, GIF or WebP · up to 25 MB</small></div>
-      {file&&<p className="source-selection">{file.name} · {(file.size/1024).toFixed(1)} KB</p>}<small>Images are retained as original evidence, not read or described by a model.</small></>}
+      {file&&<p className="source-selection">{displayFilename(file.name)} · {(file.size/1024).toFixed(1)} KB</p>}<small>Images are retained as original evidence, not read or described by a model.</small></>}
       {error&&<div role="alert" className="source-save-error"><p>{error}</p>{uncertain&&<p>The save is unconfirmed. A source or image may already be stored. Check Memory Search before trying again; this form will not repeat the write.</p>}</div>}
       <footer><span>{phase||'Will save to the connected memory space. This does not approve a claim.'}</span><button className="btn" disabled={!!phase||uncertain||!content.trim()}>{phase?'Saving…':'Save source'}</button></footer>
       {phase&&<p role="status">{phase} Keep this page open until the result is confirmed.</p>}

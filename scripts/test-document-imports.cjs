@@ -60,6 +60,23 @@ const file=(name,text)=>({name,mimeType:'application/octet-stream',buffer:Buffer
 const choose=(q,files)=>q.getByLabel('Choose documents').setInputFiles(files);
 const start=q=>q.getByRole('button',{name:/^Import \d+ ready file/}).click();
 const postCount=requests=>requests.filter(r=>r.path==='/v1/documents'&&r.method==='POST').length;
+for(const mobile of [false,true])test(`filename controls stay visible through import evidence and download, mobile=${mobile}`,async t=>{
+ const {page,q,sources}=await fixture(t,{mobile});
+ const raw='report\u202egnp.txt',shown='"report\\u202egnp.txt"';
+ await choose(q,file(raw,'Retained table detail'));
+ assert.equal(await q.locator('.import-row-heading strong').textContent(),shown);
+ await start(q);await q.getByText('1 of 1 verified · 0 ready',{exact:true}).waitFor();
+ assert.equal(sources.get(1).evidence.filename,raw);
+ await q.getByText('Inspect extracted source',{exact:true}).click();
+ assert.ok((await q.locator('details').filter({has:page.getByText('Inspect extracted source',{exact:true})}).textContent()).includes(shown));
+ await q.getByText('Download original file',{exact:true}).click();
+ const original=q.getByRole('region',{name:'Original document download'});
+ await original.getByRole('button',{name:'Prepare original file',exact:true}).click();
+ await original.getByRole('link',{name:'Save original file'}).waitFor();
+ assert.equal(await original.locator('.document-original-ready strong').textContent(),shown);
+ assert.equal((await original.textContent()).includes('\u202e'),false);
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+});
 for(const mobile of [false,true])test(`imports show checked source text and preserve read-only verification retries, mobile=${mobile}`,async t=>{
  const {page,q,state,requests}=await fixture(t,{mobile});state.failRead=true;
  await choose(q,file('café.txt','Friday <script>not markup</script>'));await start(q);

@@ -1,3 +1,4 @@
+import {displayFilename} from './filename-display';
 import {useEffect,useRef,useState} from 'react';
 import {Link} from 'react-router-dom';
 import type {ApiClient,ImageAttachment} from '../api';
@@ -39,7 +40,7 @@ export function SourceImageUnderstanding({api,episodeId,space,images,available,c
   if(!images.length||(!available&&!canSetup))return null;
   return <section className="source-understanding" aria-label="Image understanding"><header><span className="eyebrow">From image to evidence</span><h2>Understand this image</h2><p>Ask your self-hosted vision model about a retained image.</p></header>
     {!available?<p><Link to="/memory#models">Configure an image model in Models</Link>, then refresh this source to enable understanding.</p>:<>
-      <form onSubmit={event=>{event.preventDefault();void analyze();}}><label>Source image<select aria-label="Image to understand" value={selected} disabled={busy==='save'} onChange={event=>{clear();setSelected(event.target.value);}}>{images.map(image=><option key={image.attachment_id} value={image.attachment_id}>{image.filename||`Image ${image.attachment_id.slice(0,12)}`} · {image.media_type}</option>)}</select></label>
+      <form onSubmit={event=>{event.preventDefault();void analyze();}}><label>Source image<select aria-label="Image to understand" value={selected} disabled={busy==='save'} onChange={event=>{clear();setSelected(event.target.value);}}>{images.map(image=><option key={image.attachment_id} value={image.attachment_id}>{displayFilename(image.filename||`Image ${image.attachment_id.slice(0,12)}`)} · {image.media_type}</option>)}</select></label>
         <label>Task<textarea aria-label="Image understanding task" required maxLength={16000} rows={3} value={prompt} disabled={busy==='save'} onChange={event=>{clear();setPrompt(event.target.value);}}/></label><div><button className="btn primary" type="submit" disabled={busy!==null||!prompt.trim()}>{busy==='analysis'?'Understanding image…':'Understand image'}</button>{busy==='analysis'&&<button className="btn quiet" type="button" onClick={clear}>Cancel</button>}</div></form>
       {error&&<p className="source-understanding-error" role="alert">{error}</p>}
       {result&&<div className="source-understanding-result"><header><strong>{saved===null?'Unsaved model interpretation':'Saved model interpretation'}</strong><span>{result.receipt.understanding.model} · {result.receipt.understanding.width} × {result.receipt.understanding.height}</span></header><SourceContent text={result.receipt.understanding.text}/><p>Generated from episode #{episodeId} and image {selected.slice(0,12)}. This interpretation may be mistaken; saving retains it as source material.</p>

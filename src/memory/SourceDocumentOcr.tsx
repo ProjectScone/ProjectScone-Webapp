@@ -1,3 +1,4 @@
+import {displayFilename} from './filename-display';
 import {useEffect,useMemo,useState} from 'react';
 import type {ApiClient} from '../api';
 import {documentBinding,type DocumentSource} from './document-evidence';
@@ -40,7 +41,7 @@ function OcrPages({data,api,source,episodeId,space,tables}:{data:OcrDocument;api
  const move=(next:number)=>{setIndex(next);setRegionPage(0);setSelected(null);};
  if(!page)return <p>No retained PDF pages.</p>;
  return <>
-  <p>{data.filename} · {data.pages.length} retained {data.pages.length===1?'page':'pages'}</p>
+  <p>{displayFilename(data.filename)} · {data.pages.length} retained {data.pages.length===1?'page':'pages'}</p>
   {data.selection&&<p>{ocrModeLabel(data.selection.mode)} · {ocrOrderLabel(data.selection.reading_order)} · {data.selection.dpi} DPI.</p>}
   <nav className="ocr-actions" aria-label="Retained PDF pages"><button className="btn quiet small" disabled={!index} onClick={()=>move(index-1)}>Previous PDF page</button><span>PDF page {page.number} · {index+1} of {data.pages.length} retained</span><button className="btn quiet small" disabled={index+1>=data.pages.length} onClick={()=>move(index+1)}>Next PDF page</button>{data.pages.length>2&&<label>Retained page position<input type="number" min="1" max={data.pages.length} value={index+1} onChange={event=>{const next=Number(event.target.value);if(Number.isInteger(next)&&next>=1&&next<=data.pages.length)move(next-1);}}/></label>}</nav>
   <p>{page.extraction==='ocr'?`OCR · ${page.engine} · ${page.regions.length} recorded regions`:'Embedded text · no OCR geometry recorded'}</p>

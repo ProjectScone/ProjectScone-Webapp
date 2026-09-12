@@ -4,14 +4,15 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const http=require('node:http');
-const {chromium}=require(process.env.SCONE_PLAYWRIGHT_MODULE||'playwright');
+const engines=require(process.env.SCONE_PLAYWRIGHT_MODULE||'playwright');
 const contract=require('../tests/fixtures/http-capabilities.json');
 let browser;
-before(async()=>{browser=await chromium.launch({headless:true,executablePath:process.env.SCONE_BROWSER_PATH,args:['--disable-gpu']});});
+before(async()=>{browser=await engines[process.env.SCONE_BROWSER_ENGINE||'chromium'].launch({headless:true,executablePath:process.env.SCONE_BROWSER_PATH,args:['--disable-gpu']});});
 after(async()=>{await browser?.close();});
 const row=(id,kind='file')=>({episode_id:id,kind,source:kind==='file'?`guide-${id}.md`:null,created_at:'2026-09-06',byte_count:1600,preview:`Source ${id} <script>not markup</script>`,preview_truncated:true});
-async function fixture(t,{supported=true,mobile=false,crowded=false,sourceRead=true}={}){
+async function fixture(t,{supported=true,mobile=false,crowded=false,sourceRead=true,filename=null}={}){
   const html=fs.readFileSync(process.env.SCONE_DOCUMENTS_HTML||path.resolve(__dirname,'../dist/console.html'),'utf8').replaceAll('__SCONE_TOKEN__','documents-fixture');
+  const sourceRow=(id,kind='file')=>({...row(id,kind),...(filename&&kind==='file'?{source:filename,document_filename:filename}:{})});
   const requests=[];const state={fail:false,malformed:false,delay:null,detailDelay:null,empty:false,space:'library',sourceStatus:200,wrongId:false};
   const server=http.createServer(async(req,res)=>{
     const url=new URL(req.url,'http://fixture');
@@ -27,16 +28,16 @@ async function fixture(t,{supported=true,mobile=false,crowded=false,sourceRead=t
     if(url.pathname==='/v1/sources'){
       if(state.fail){res.statusCode=503;return res.end('{"error":"Inventory temporarily unavailable"}');}
       if(state.delay)await state.delay;
-      if(state.malformed)return res.end(JSON.stringify({items:[row(30)],has_more:true,next_before:999}));
+      if(state.malformed)return res.end(JSON.stringify({items:[sourceRow(30)],has_more:true,next_before:999}));
       const kind=url.searchParams.get('kind');
       const before=url.searchParams.get('before');
-      const items=kind==='note'?[row(6,'note')]:kind==='connector'?[]:before?[row(4)]:crowded?Array.from({length:25},(_,i)=>row(50-i)):[row(30),row(29)];
+      const items=kind==='note'?[sourceRow(6,'note')]:kind==='connector'?[]:before?[sourceRow(4)]:crowded?Array.from({length:25},(_,i)=>sourceRow(50-i)):[sourceRow(30),sourceRow(29)];
       return res.end(JSON.stringify({items,has_more:!kind&&!before,next_before:!kind&&!before?items.at(-1).episode_id:null}));
     }
     if(/^\/v1\/episodes\/\d+$/.test(url.pathname)){
       const id=Number(url.pathname.split('/').at(-1));if(id===30&&state.detailDelay)await state.detailDelay;
       if(state.sourceStatus!==200){res.statusCode=state.sourceStatus;return res.end('{"error":"source inaccessible"}');}
-      return res.end(JSON.stringify({...row(state.wrongId?id+1:id),content:state.empty?'':`Full retained text ${id}\n<script>not executable</script>\nEND`,tags:[],metadata:{collection:'manuals'}}));
+      return res.end(JSON.stringify({...sourceRow(state.wrongId?id+1:id),content:state.empty?'':`Full retained text ${id}\n<script>not executable</script>\nEND`,tags:[],metadata:{collection:'manuals'}}));
     }
     res.statusCode=404;res.end('{}');
   });
@@ -236,4 +237,16 @@ test('older servers do not expose or probe the unsupported inventory',async t=>{
   await page.getByRole('heading',{name:'This page is not available on this server',exact:true}).waitFor();
   assert.equal(await page.getByRole('button',{name:'Documents',exact:true}).count(),0);
   assert.equal(requests.some(r=>r.url.pathname==='/v1/sources'),false);
+});
+
+for(const mobile of [false,true])test(`filename controls stay visible in inventory and source pages, mobile=${mobile}`,async t=>{
+ const raw='report\u202egnp.txt',shown='"report\\u202egnp.txt"';
+ const {page,requests}=await fixture(t,{mobile,filename:raw});
+ await page.getByRole('button',{name:'Open '+shown,exact:true}).first().click();
+ await page.getByRole('heading',{name:shown,exact:true}).waitFor();
+ await page.getByRole('link',{name:'Open source page',exact:true}).click();
+ await page.getByRole('heading',{name:shown,exact:true}).waitFor();
+ assert.equal(await page.locator('h1').textContent(),shown);
+ assert.equal(requests.some(r=>r.method!=='GET'),false);
+ assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
 });

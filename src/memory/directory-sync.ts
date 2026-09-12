@@ -1,4 +1,5 @@
 import type {ApiClient} from '../api.ts';
+import {displayFilename} from './filename-display.ts';
 
 type SyncApi=Pick<ApiClient,'request'>;
 export interface SyncCollection {collection_id:string;label:string;allow_delete_missing:boolean;configuration:string}
@@ -17,17 +18,13 @@ function object(value:unknown):Record<string,unknown>{if(!value||typeof value!==
 function text(value:unknown,max=1024,min=1):string{
  if(typeof value!=='string'||[...value].length<min||[...value].length>max||value.includes('\0')||new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(new TextEncoder().encode(value))!==value)throw bad();return value;
 }
-const displayControls=/[\x00-\x1f\x7f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/;
-function escapedDisplay(value:string):string{
- return JSON.stringify(value).replace(/[\x7f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,char=>'\\u'+char.charCodeAt(0).toString(16).padStart(4,'0'));
-}
 export function displaySyncPath(value:string):{text:string;escaped:boolean}{
- const escaped=displayControls.test(value);
- return {text:escaped?escapedDisplay(value):value,escaped};
+ const text=displayFilename(value);
+ return {text,escaped:text!==value};
 }
 function displayLabel(value:unknown):string{
  if(typeof value!=='string'||[...value].length<1||[...value].length>160)throw bad();
- return displayControls.test(value)||new TextDecoder('utf-8',{ignoreBOM:true}).decode(new TextEncoder().encode(value))!==value?'Escaped label: '+escapedDisplay(value):value;
+ const text=displayFilename(value);return text!==value?'Escaped label: '+text:value;
 }
 function integer(value:unknown,max=2147483647,min=0):number{if(typeof value!=='number'||!Number.isSafeInteger(value)||value<min||value>max)throw bad();return value;}
 function flag(value:unknown):boolean{if(typeof value!=='boolean')throw bad();return value;}

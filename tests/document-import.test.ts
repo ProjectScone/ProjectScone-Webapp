@@ -8,6 +8,17 @@ import {parseDocumentFormats,validateDocumentSelection,importDocument,verifyDocu
 const formats=()=>parseDocumentFormats({max_input_bytes:1024,formats:{'.csv':{available:true,parser:'text'},'.pdf':{available:false,parser:'pdf-text',requires:'pdf extra; OCR is opt-in'}}});
 const file=()=>new File(['name,day\nlaunch,Friday\n'],'café.csv');
 
+test('selection errors expose filename direction controls without altering file identities',()=>{
+ for(const [content,suffix] of [['','csv'],['x'.repeat(1025),'csv'],['x','bin'],['x','pdf']]){
+  const raw='report\u202egnp.'+suffix,input=new File([content],raw);
+  assert.throws(()=>validateDocumentSelection([input],formats()),(error:unknown)=>{
+   assert.ok(error instanceof Error);assert.equal(error.message.includes('\u202e'),false);
+   assert.ok(error.message.includes('\\u202e'));return true;
+  });
+  assert.equal(input.name,raw);
+ }
+});
+
 test('format discovery distinguishes installed parsers and validates selection limits',()=>{
  const catalog=formats();assert.equal(catalog.formats.get('.pdf')?.available,false);
  assert.equal(validateDocumentSelection([file()],catalog),undefined);
