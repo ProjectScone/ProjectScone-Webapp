@@ -509,3 +509,25 @@ The [ProjectScone Research Attribution License](LICENSE) is custom and
 MIT-derived, with mandatory research and academic citation. Credit Mark
 Sturman, JudgeHuman and ProjectScone. [CITING.md](CITING.md) provides MLA,
 APA, Chicago and BibTeX examples; [CITATION.cff](CITATION.cff) provides metadata.
+
+### Retained media transcripts and checked playback
+
+Media source pages and verified import results offer **Inspect transcript and audio**. **Read transcript** checks the saved source, timestamps and current
+memory space before showing paged segments. Reading does not transcribe again.
+Video transcripts describe the first audio stream; they do not describe frames.
+
+For extractions with a recorded normalized audio identity, **Prepare checked audio** fetches `/v1/episodes/{id}/document/audio`, verifies its digest, length and
+PCM format, then rechecks source access before creating a temporary playback URL.
+The host decodes the retained original without running its transcription model.
+Playback starts only through the audio control. Segment seek buttons move the
+playhead and pause it; cancellation and clearing release the temporary URL.
+Legacy extractions without this identity retain transcript inspection and original
+downloads but cannot offer checked playback.
+
+`node --test scripts/test-document-media.cjs` covers packaged controls against
+bounded local fixtures. `scripts/test-document-media-native.cjs` additionally runs
+real native ingestion, decoding and SQLite persistence through the packaged UI,
+including a service restart and a forgotten source. Set `SCONE_TEST_PYTHON` to an
+interpreter with Scone's API/media dependencies, install local `ffmpeg`, and use
+the browser environment described above. Its generated audio and scripted
+transcript test interoperability, not transcription accuracy.
