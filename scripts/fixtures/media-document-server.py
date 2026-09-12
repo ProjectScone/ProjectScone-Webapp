@@ -21,13 +21,17 @@ async def main():
     state, html, port = Path(sys.argv[1]), Path(sys.argv[2]), int(sys.argv[3])
     ffmpeg = shutil.which('ffmpeg')
     assert ffmpeg, 'the media fixture requires an installed local ffmpeg'
+    chunked = len(sys.argv) > 4 and sys.argv[4] == 'windows'
+    observed_audio = []
     async def transcribe(audio):
         with (state / 'transcription-calls').open('a') as output:
             output.write('transcribe\n')
-        (state / 'transcribed.wav').write_bytes(audio)
+        observed_audio.append(audio)
+        if chunked and len(observed_audio) == 2:
+            return ()
         return (TranscriptionSegment(text='Café launch is Friday.', start_seconds=-0.0, end_seconds=0.25),
                 TranscriptionSegment(text='Inspect the recorded source.', start_seconds=0.5, end_seconds=0.9))
-    media = DocumentMedia(MediaDocumentParser(transcribe, ffmpeg_executable=ffmpeg), revision='fixture-v1')
+    media = DocumentMedia(MediaDocumentParser(transcribe, ffmpeg_executable=ffmpeg, chunk_seconds=1 if chunked else None), revision='fixture-v1')
     memory = await MemoryEngine(SqliteDocumentStore(state/'memory.db'), SqliteVectorIndex(state/'memory.db'),
                                 HashEmbedder(), blobs=FileBlobStore(state/'blobs')).open()
     if not (state / 'episode-id').exists():
@@ -36,8 +40,15 @@ async def main():
             audio.setnchannels(2)
             audio.setsampwidth(2)
             audio.setframerate(48000)
-            audio.writeframes(b'\0' * 192000)
+            audio.writeframes(b'\0' * 192000 * (3 if chunked else 1))
         saved = await ingest_document(memory, 'alpha', output.getvalue(), filename='café.wav', parser=media.parser())
+        combined = io.BytesIO()
+        with wave.open(combined, 'wb') as audio:
+            audio.setnchannels(1)
+            audio.setsampwidth(2)
+            audio.setframerate(16000)
+            audio.writeframes(b''.join(part[44:] for part in observed_audio))
+        (state / 'transcribed.wav').write_bytes(combined.getvalue())
         (state / 'episode-id').write_text(str(saved.added.episode_id))
     app = create_app(memory, {'media-reader':'alpha', 'media-admin':'alpha'},
                      roles={'media-reader':'read'}, document_media=media)
