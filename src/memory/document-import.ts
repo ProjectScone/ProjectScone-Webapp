@@ -42,7 +42,7 @@ export function validateDocumentSelection(files:readonly File[],catalog:Document
   if(!format.available)throw Error(`${file.name}: its parser is unavailable on the connected server.`);
  }
 }
-function parseReceipt(value:unknown,original:ImageAttachment,filename:string,expectedOcr?:PdfOcrSelection):ImportReceipt{
+export function parseReceipt(value:unknown,original:ImageAttachment,filename:string,expectedOcr?:PdfOcrSelection):ImportReceipt{
  const v=record(value),added=record(v.added),savedOriginal=attachment(v.original),manifest=attachment(v.manifest);
  sameAttachment(savedOriginal,original);
  if(v.filename!==filename||typeof added.deduplicated!=='boolean'||manifest.media_type!=='application/json')throw Error('Document receipt does not match this import.');

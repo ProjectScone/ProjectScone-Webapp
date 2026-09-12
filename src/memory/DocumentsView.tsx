@@ -4,6 +4,7 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import {ApiError,type ApiClient} from '../api';
 import {SourceImages} from '../components/SourceImages';
 import {DocumentImports} from './DocumentImports';
+import {DurableDocumentImports} from './DurableDocumentImports';
 import {SourceComposer} from './SourceComposer';
 import {SourcePageLink} from './SourcePageLink';
 import {parseRetainedSource,parseSourcePage,type SourcePage,type SourceSummary} from './source-inventory';
@@ -16,7 +17,7 @@ const name=(source:SourceSummary)=>source.document_filename||source.source||`${s
 const failure=(error:unknown)=>error instanceof Error?error.message:'Could not load sources.';
 function SourceMark(){return <svg viewBox="0 0 24 28" fill="none" aria-hidden="true"><path d="M5 1h9l8 8v17H2V1h3Z" stroke="currentColor" strokeWidth="1.4"/><path d="M14 1v8h8M7 15h10M7 20h7" stroke="currentColor" strokeWidth="1.4"/></svg>;}
 
-export function DocumentsView({api,attachments,documentImports=false}:{api:ApiClient;attachments:boolean;documentImports?:boolean}) {
+export function DocumentsView({api,attachments,documentImports=false,documentJobs=false}:{api:ApiClient;attachments:boolean;documentImports?:boolean;documentJobs?:boolean}) {
   const [snapshot,setSnapshot]=useState<{api:ApiClient;query:Query;data:SourcePage}|null>(null);
   const [work,setWork]=useState<{query:Query;loading:boolean;error?:string}>({query:first(),loading:true});
   const [selection,setSelection]=useState<SourceSummary|null>(null);
@@ -40,7 +41,7 @@ export function DocumentsView({api,attachments,documentImports=false}:{api:ApiCl
   const query=current?.query??work.query;
   const data=current?.data;
   return <section className="documents" aria-label="Source library">
-    {documentImports&&<DocumentImports api={api} onSaved={()=>void run(first())}/>}
+    {documentImports&&(documentJobs?<DurableDocumentImports api={api} onSaved={()=>void run(first())}/>:<DocumentImports api={api} onSaved={()=>void run(first())}/>)}
     {attachments&&<SourceComposer api={api} onSaved={()=>void run(first())}/>}
     <div className="documents-toolbar"><div><span className="eyebrow">Stored sources</span><p>Explore the material behind your memory.</p></div><button className="btn quiet small" disabled={work.loading} onClick={()=>void run(first(query.kind))}>Refresh sources</button></div>
     <div className="documents-filters" role="group" aria-label="Filter sources by type">{KINDS.map(([kind,label])=><button key={kind} aria-pressed={query.kind===kind} onClick={()=>void run(first(kind))}>{label}</button>)}</div>

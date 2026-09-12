@@ -99,7 +99,7 @@ function ImportWorkspace({api,onSaved,close}:{api:ApiClient;onSaved:()=>void;clo
   </>}
  </section>;
 }
-function ImportEvidence({api,value}:{api:ApiClient;value:VerifiedImport}){
+export function ImportEvidence({api,value}:{api:ApiClient;value:VerifiedImport}){
  const [page,setPage]=useState(0),{receipt,source,evidence}=value;
  return <div className="import-evidence"><p>Source #{receipt.episodeId} · {receipt.segments} extracted {receipt.segments===1?'segment':'segments'} · {receipt.format}{receipt.deduplicated?' · Existing source reused':''}</p>
   {evidence.pdfOcr&&<p>{ocrModeLabel(evidence.pdfOcr.mode)} · {ocrOrderLabel(evidence.pdfOcr.reading_order)} · {evidence.pdfOcr.dpi} DPI. Settings match the retained extraction.</p>}
@@ -110,7 +110,7 @@ function ImportEvidence({api,value}:{api:ApiClient;value:VerifiedImport}){
  </div>;
 }
 
-function PdfOcrControls({filename,catalog,value,disabled,onChange}:{filename:string;catalog:PdfOcrCatalog;value?:PdfOcrSelection;disabled:boolean;onChange:(value:PdfOcrSelection|undefined)=>void}){
+export function PdfOcrControls({filename,catalog,value,disabled,onChange}:{filename:string;catalog:PdfOcrCatalog;value?:PdfOcrSelection;disabled:boolean;onChange:(value:PdfOcrSelection|undefined)=>void}){
  return <div className="import-ocr-controls">
   <label>PDF extraction<select aria-label={`PDF extraction for ${filename}`} disabled={disabled} value={value?.mode??'text'} onChange={event=>onChange(event.target.value==='text'?undefined:parsePdfOcrSelection({mode:event.target.value,reading_order:value?.reading_order??catalog.readingOrders[0]}))}>
    <option value="text">Embedded text only</option>{catalog.modes.map(mode=><option value={mode} key={mode}>{ocrModeLabel(mode)}</option>)}
