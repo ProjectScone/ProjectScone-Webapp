@@ -106,7 +106,7 @@ export function ImportEvidence({api,value}:{api:ApiClient;value:VerifiedImport})
   <SourcePageLink api={api} episodeId={receipt.episodeId}/>
   <details><summary>Inspect extracted source</summary><p>{evidence.filename} · {evidence.parser}. Original identity and extracted text match the saved source.</p><ul>{evidence.segments.slice(page*20,(page+1)*20).map((segment,index)=><li key={page*20+index}><strong>{segment.locator}</strong>{segment.extraction==='ocr'&&<small>OCR{segment.ocrEngine?` · ${segment.ocrEngine}`:''}</small>}{segment.extraction==='text_layer'&&<small>Embedded text</small>}<pre>{segment.text}</pre></li>)}</ul>{evidence.segments.length>20&&<nav aria-label="Extracted segment pages"><button className="btn quiet small" disabled={!page} onClick={()=>setPage(page-1)}>Previous segments</button><span>Page {page+1} of {Math.ceil(evidence.segments.length/20)}</span><button className="btn quiet small" disabled={(page+1)*20>=evidence.segments.length} onClick={()=>setPage(page+1)}>Next segments</button></nav>}<p className="import-digest">Original SHA-256: {receipt.original.attachment_id}</p></details>
   <details><summary>Download original file</summary><DocumentOriginal api={api} source={source} episodeId={receipt.episodeId}/></details>
-  {evidence.tables.length>0&&<SourceDocumentEvidence api={api} episodeId={receipt.episodeId} source={source}/>}
+  {evidence.tables.length>0&&<SourceDocumentEvidence api={api} episodeId={receipt.episodeId} source={source} space={value.space}/>}
  </div>;
 }
 

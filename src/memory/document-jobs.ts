@@ -77,5 +77,5 @@ export async function verifyDocumentJob(api:ApiClient,job:DocumentJob,signal:Abo
  const attached=record(raw.original);
  const original:ImageAttachment={attachment_id:job.attachmentId,bytes:integer(attached.bytes,1,25*1024*1024),media_type:text(attached.media_type,256)};
  const receipt=parseReceipt(raw,original,job.filename,request.pdfOcr);
- return verifyDocumentImport(api,receipt,signal);
+ return verifyDocumentImport(api,receipt,signal,job.space);
 }
