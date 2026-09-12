@@ -9,6 +9,7 @@ export interface ApiClient {
   image(attachment: ImageAttachment, signal?: AbortSignal): Promise<Blob>;
   uploadImage(file: File, signal?: AbortSignal): Promise<ImageAttachment>;
   uploadDocument(file: File, signal?: AbortSignal): Promise<ImageAttachment>;
+  documentAudio(episodeId:number,audio:ImageAttachment,signal?:AbortSignal):Promise<Blob>;
   documentOriginal(original:ImageAttachment,signal?:AbortSignal):Promise<Blob>;
   conversationStream(sid: string, requestId: string, after: number, signal: AbortSignal): Promise<ReadableStream<Uint8Array>>;
   voiceConnection(sid:string,format:{sampleRate:number;channels:number},events:VoiceEvents,signal:AbortSignal):ReturnType<typeof attachVoiceSocket>;
@@ -59,6 +60,15 @@ export function createApiClient(key: string, unauthorized: () => void, base = ''
         await response.body?.cancel();throw Error('Invalid conversation stream response');
       }
       return response.body;
+    },
+    async documentAudio(episodeId,audio,signal){
+      if(!Number.isSafeInteger(episodeId)||episodeId<1||audio.media_type!=='audio/wav'||audio.bytes>19200044)throw Error('Invalid normalized audio reference.');
+      validateOriginalReference(audio);
+      const active=signal?AbortSignal.any([signal,AbortSignal.timeout(60000)]):AbortSignal.timeout(60000);
+      active.throwIfAborted();
+      const response=await fetch(base+`/v1/episodes/${episodeId}/document/audio`,{headers:{Authorization:'Bearer '+key},signal:active,cache:'no-store',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer'});
+      if(!response.ok){await response.body?.cancel();if(response.status===401)unauthorized();throw new ApiError(response.status,`Audio preparation failed (${response.status}).`);}
+      return readDocumentOriginal(response,audio,active);
     },
     async documentOriginal(original,signal){
       validateOriginalReference(original);

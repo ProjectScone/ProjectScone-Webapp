@@ -1,3 +1,4 @@
+import {parseMediaTranscript,type MediaTranscript} from './document-media.ts';
 import {parsePdfOcrEvidence,type PdfOcrEvidence} from './document-ocr.ts';
 export interface DocumentAttachment {attachment_id:string;media_type:string;bytes:number}
 export interface DocumentBinding {original:DocumentAttachment;manifest:DocumentAttachment;format:string}
@@ -12,7 +13,7 @@ export interface EvidenceSegment {locator:string;text:string;start:number;member
 export interface DocumentEvidence {
  filename:string;format:string;parser:string;segments:EvidenceSegment[];cells:Map<string,DocumentCell>;
  tables:{locator:string;cells:DocumentCell[]}[];notes:{locator:string;status:string;reason:string}[];
- pdfOcr?:PdfOcrEvidence;
+ pdfOcr?:PdfOcrEvidence;media?:MediaTranscript;
 }
 const encoder=new TextEncoder(),decoder=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true});
 function record(value:unknown):Record<string,unknown>{if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid document evidence record');return value as Record<string,unknown>;}
@@ -80,7 +81,7 @@ export function parseDocumentEvidence(value:unknown,source:DocumentSource):Docum
    }
   }}
  }
- return {filename,format,parser,segments,cells,tables:Array.from(tables,([locator,cells])=>({locator,cells:cells.sort((a,b)=>a.row-b.row||a.column-b.column)})),notes,pdfOcr};
+ return {filename,format,parser,segments,cells,tables:Array.from(tables,([locator,cells])=>({locator,cells:cells.sort((a,b)=>a.row-b.row||a.column-b.column)})),notes,pdfOcr,media:parseMediaTranscript(format,parser,metadata,list(v.segments,20000))};
 }
 export function cellExcerpt(cell:DocumentCell,evidence:DocumentEvidence){
  const segment=evidence.segments[cell.segment],bytes=encoder.encode(segment.text),start=cell.start-segment.start,end=cell.end-segment.start;

@@ -53,3 +53,16 @@ test('aligned-row strategy requires common separating column gaps',async()=>{
  value.layout.tables[0].cells[3].box=[.6,.2,.8,.25];
  await assert.rejects(parseOcrTables(value,address),/common separating gap/);
 });
+
+for(const tied of [false,true])test(`cell word order follows geometry and source index: tied=${tied}`,async()=>{
+ const {address,value}=await fixture(),first=address.page.regions[0];
+ const start=new TextEncoder().encode(address.page.text).length+1;
+ const extra:OcrRegion={...first,text:'Smith',start,end:start+5,box:tied?[...first.box]:[.31,.1,.4,.15]};
+ address.page.regions.push(extra);address.page.text+=' Smith';address.source.content=address.page.text;
+ value.page_text_sha256=await pageDigest(address.page.text);value.layout.region_count++;
+ const cell=value.layout.tables[0].cells[0];cell.regions=[0,6];cell.text=first.text+' Smith';
+ cell.box=[first.box[0],first.box[1],extra.box[2],first.box[3]];
+ assert.equal((await parseOcrTables(value,address)).tables[0].cells[0].text,cell.text);
+ cell.regions=[6,0];cell.text='Smith '+first.text;
+ await assert.rejects(parseOcrTables(value,address),/region.*order/i);
+});
