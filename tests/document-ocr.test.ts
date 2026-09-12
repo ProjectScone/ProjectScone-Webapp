@@ -31,6 +31,7 @@ async function fixture(run:(api:ReturnType<typeof createApiClient>,calls:string[
  const server=createServer(async(req,res)=>{
   calls.push(`${req.method} ${req.url}`);const chunks:Buffer[]=[];for await(const part of req)chunks.push(part);
   res.setHeader('content-type','application/json');
+  if(req.url==='/v1/status')return res.end(JSON.stringify({space:'alpha'}));
   if(req.url==='/v1/attachments')return res.end(JSON.stringify(original));
   if(req.url==='/v1/documents'){
    assert.deepEqual(JSON.parse(Buffer.concat(chunks).toString()),{attachment_id:hash,filename:'scan.pdf',pdf_ocr:selection});
@@ -53,14 +54,14 @@ test('selected OCR survives upload, verified provenance and read-only reinspecti
  assert.deepEqual(result.verified.evidence.pdfOcr,{...selection,dpi:150});
  assert.equal(result.verified.evidence.segments[0].extraction,'ocr');
  calls.length=0;await verifyDocumentImport(api,result.verified.receipt,new AbortController().signal);
- assert.deepEqual(calls,['GET /v1/episodes/7','GET /v1/episodes/7/document']);
+ assert.deepEqual(calls,['GET /v1/status','GET /v1/episodes/7','GET /v1/episodes/7/document','GET /v1/episodes/7']);
 }));
 
 for(const mode of ['wrong-evidence','missing-evidence'])test(`OCR ${mode} keeps acknowledged source for read-only recovery`,async()=>fixture(async(api,calls,change,file)=>{
  change(mode);const result=await importDocument(api,file,formats(),new AbortController().signal,()=>{},selection);
  assert.equal(result.status,'unverified');if(result.status!=='unverified')return;
  calls.length=0;change('ok');await verifyDocumentImport(api,result.receipt,new AbortController().signal);
- assert.deepEqual(calls,['GET /v1/episodes/7','GET /v1/episodes/7/document']);
+ assert.deepEqual(calls,['GET /v1/status','GET /v1/episodes/7','GET /v1/episodes/7/document','GET /v1/episodes/7']);
 }));
 
 for(const mode of ['wrong-receipt','lost'])test(`OCR ${mode} is uncertain and never repeated`,async()=>fixture(async(api,calls,change,file)=>{

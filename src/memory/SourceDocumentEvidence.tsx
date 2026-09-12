@@ -1,11 +1,12 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
+import {readDocumentEvidence} from './document-evidence-read';
 import type {ApiClient} from '../api';
-import {cellExcerpt,parseDocumentEvidence,type DocumentSource,type DocumentEvidence,type DocumentCell,type CellReference} from './document-evidence';
+import {cellExcerpt,type DocumentSource,type DocumentEvidence,type DocumentCell,type CellReference} from './document-evidence';
 import './document-evidence.css';
 const preview=(value:string,max=180)=>value.length>max?value.slice(0,max)+'…':value;
-export function SourceDocumentEvidence({api,source,episodeId}:{api:ApiClient;source:DocumentSource;episodeId:number}){
+export function SourceDocumentEvidence({api,source,episodeId,space}:{api:ApiClient;source:DocumentSource;episodeId:number;space:string}){
  const [enabled,setEnabled]=useState(false),[attempt,setAttempt]=useState(0);
- const request=useMemo(()=>({api,source,episodeId,enabled,attempt}),[api,source,episodeId,enabled,attempt]);
+ const request=useMemo(()=>({api,source,episodeId,space,enabled,attempt}),[api,source,episodeId,space,enabled,attempt]);
  const [snapshot,setSnapshot]=useState<{request:object;data?:DocumentEvidence;error?:string}|null>(null);
  const [view,setView]=useState<{data:DocumentEvidence;table:number;page:number;notes:number;selected:string|null;mergedPage:number}|null>(null);
  const result=enabled&&snapshot?.request===request?snapshot:null,data=result?.data;
@@ -16,8 +17,8 @@ export function SourceDocumentEvidence({api,source,episodeId}:{api:ApiClient;sou
  useEffect(()=>{
   if(!enabled)return;
   const controller=new AbortController(),signal=AbortSignal.any([controller.signal,AbortSignal.timeout(30000)]);
-  void api.request<unknown>(`/v1/episodes/${episodeId}/document`,{signal,cache:'no-store'})
-   .then(value=>parseDocumentEvidence(value,source)).then(data=>{if(!controller.signal.aborted)setSnapshot({request,data});})
+  void readDocumentEvidence(api,source,episodeId,space,signal)
+   .then(data=>{if(!signal.aborted)setSnapshot({request,data});})
    .catch(()=>{if(!controller.signal.aborted)setSnapshot({request,error:'Document evidence could not be verified. Refresh the source if it changed, or retry this read.'});});
   return()=>controller.abort();
  },[request]);

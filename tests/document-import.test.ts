@@ -21,7 +21,7 @@ test('format discovery distinguishes installed parsers and validates selection l
 });
 
 async function fixture(run:(client:ReturnType<typeof createApiClient>,calls:string[],change:(mode:string)=>void)=>Promise<void>){
- let mode='ok';const calls:string[]=[];
+ let mode='ok',readEvidence=false;const calls:string[]=[];
  const raw=Buffer.from(await file().arrayBuffer()),hash=createHash('sha256').update(raw).digest('hex');
  // Content-addressed blobs keep the first upload's name and media type.
  const original={attachment_id:hash,bytes:raw.length,media_type:'text/csv',filename:'old-name.txt'};
@@ -35,6 +35,7 @@ async function fixture(run:(client:ReturnType<typeof createApiClient>,calls:stri
   res.setHeader('content-type','application/json');
   if(req.url==='/redirected'){res.writeHead(403);return res.end('{}');}
   if(mode==='denied'){res.writeHead(403);return res.end('{"error":"read-only key"}');}
+  if(req.url==='/v1/status')return res.end(JSON.stringify({space:mode==='foreign-space'?'beta':'alpha'}));
   if(req.url==='/v1/attachments'){
    assert.equal(req.headers['content-type'],'application/octet-stream');assert.deepEqual(body,raw);
    return res.end(JSON.stringify(mode==='bad-upload'?{...original,attachment_id:'c'.repeat(64)}:original));
@@ -45,15 +46,20 @@ async function fixture(run:(client:ReturnType<typeof createApiClient>,calls:stri
    if(mode==='lost-write'){res.destroy();return;}
    return res.end(JSON.stringify(mode==='bad-receipt'?{...receipt,original:{...original,bytes:1}}:receipt));
   }
-  if(req.url==='/v1/episodes/7')return res.end(JSON.stringify(mode==='wrong-source'?{...episode,episode_id:8}:episode));
+  if(req.url==='/v1/episodes/7'){
+   if(readEvidence&&mode==='forgotten'){res.writeHead(410);return res.end('{}');}
+   const current=readEvidence&&mode==='changed-text'?{...episode,content:'different'}:readEvidence&&mode==='changed-binding'?{...episode,metadata:{...episode.metadata,document_manifest:'c'.repeat(64)}}:episode;
+   return res.end(JSON.stringify(mode==='wrong-source'?{...episode,episode_id:8}:current));
+  }
   if(req.url==='/v1/episodes/7/document'){
+   readEvidence=true;
    if(mode==='lost-read'){res.destroy();return;}
    return res.end(JSON.stringify(mode==='wrong-evidence'?{...evidence,segments:[{locator:'row:2',text:'invented'}]}:evidence));
   }
   res.writeHead(404);res.end('{}');
  });
  await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));const address=server.address();if(!address||typeof address==='string')throw Error('No address');
- try{await run(createApiClient('writer',()=>{},`http://127.0.0.1:${address.port}`),calls,value=>{mode=value;});}
+ try{await run(createApiClient('writer',()=>{},`http://127.0.0.1:${address.port}`),calls,value=>{mode=value;readEvidence=false;});}
  finally{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}
 }
 
@@ -61,9 +67,9 @@ test('import verifies raw bytes, explicit Unicode filename, saved identity and e
  const phases:string[]=[];const result=await importDocument(api,file(),formats(),new AbortController().signal,phase=>phases.push(phase));
  assert.equal(result.status,'verified');if(result.status!=='verified')return;
  assert.equal(result.verified.receipt.episodeId,7);assert.equal(result.verified.evidence.filename,'café.csv');
- assert.equal(result.verified.source.content,'launch,Friday');
+ assert.equal(result.verified.source.content,'launch,Friday');assert.equal(result.verified.space,'alpha');
  assert.deepEqual(phases,['uploading','indexing','verifying']);
- assert.deepEqual(calls,['POST /v1/attachments','POST /v1/documents','GET /v1/episodes/7','GET /v1/episodes/7/document']);
+ assert.deepEqual(calls,['POST /v1/attachments','POST /v1/documents','GET /v1/status','GET /v1/episodes/7','GET /v1/episodes/7/document','GET /v1/episodes/7']);
 }));
 
 test('invalid upload receipts never index; ambiguous indexing never retries automatically',async()=>fixture(async(api,calls,change)=>{
@@ -73,11 +79,12 @@ test('invalid upload receipts never index; ambiguous indexing never retries auto
  assert.deepEqual(calls,['POST /v1/attachments','POST /v1/documents']);
 }));
 
-for(const mode of ['lost-read','wrong-source','wrong-evidence'])test(`a ${mode} outcome preserves the saved receipt for a read-only retry`,async()=>fixture(async(api,calls,change)=>{
+for(const mode of ['lost-read','wrong-source','wrong-evidence','forgotten','changed-text','changed-binding'])test(`a ${mode} outcome preserves the saved receipt for a read-only retry`,async()=>fixture(async(api,calls,change)=>{
  change(mode);const result=await importDocument(api,file(),formats(),new AbortController().signal,()=>{});
  assert.equal(result.status,'unverified');if(result.status!=='unverified')return;
+ assert.equal(calls.filter(call=>call==='POST /v1/documents').length,1);
  calls.length=0;change('ok');const verified=await verifyDocumentImport(api,result.receipt,new AbortController().signal);
- assert.equal(verified.source.content,'launch,Friday');assert.deepEqual(calls,['GET /v1/episodes/7','GET /v1/episodes/7/document']);
+ assert.equal(verified.source.content,'launch,Friday');assert.deepEqual(calls,['GET /v1/status','GET /v1/episodes/7','GET /v1/episodes/7/document','GET /v1/episodes/7']);
 }));
 
 test('permission denial is a retryable failure and malformed indexed identity is uncertain',async()=>fixture(async(api,calls,change)=>{
@@ -101,3 +108,11 @@ test('combined queue bytes are bounded and an already-cancelled import makes no 
   assert.equal(result.status,'failed');assert.deepEqual(calls,[]);assert.deepEqual(phases,[]);
  });
 });
+
+test('receipt verification refuses a different expected memory space before reading evidence',async()=>fixture(async(api,calls,change)=>{
+ const result=await importDocument(api,file(),formats(),new AbortController().signal,()=>{});
+ assert.equal(result.status,'verified');if(result.status!=='verified')return;
+ calls.length=0;change('foreign-space');
+ await assert.rejects(verifyDocumentImport(api,result.verified.receipt,new AbortController().signal,'alpha'),/space changed/);
+ assert.deepEqual(calls,['GET /v1/status']);
+}));

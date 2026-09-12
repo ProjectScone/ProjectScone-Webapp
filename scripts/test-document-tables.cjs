@@ -15,9 +15,9 @@ const evidence={original,manifest,filename:'revenue.html',format:'html',parser:'
  {locator:'row:1',text:'Revenue',metadata:{},table_cells:[{locator:'header',table_locator:'table:1',row:0,column:0,row_span:1,column_span:1,is_header:true,text:'Revenue',start:0,end:7,headers:[]}]},
  {locator:'row:2',text:'Revenue: €20',metadata:{},table_cells:[{locator:'value',table_locator:'table:1',row:1,column:0,row_span:1,column_span:1,is_header:false,text:'€20',start:9,end:14,headers:[{locator:'header',text:'Revenue',association:'column'}]}]},
 ]};
-test('table controls remain live after copying the source link with a cell selected',async t=>{
+for(const failure of ['none','forgotten','text','binding'])test(`table source controls and final evidence validation: ${failure}`,async t=>{
  const html=fs.readFileSync(process.env.SCONE_DOCUMENTS_HTML||path.resolve(__dirname,'../dist/console.html'),'utf8').replaceAll('__SCONE_TOKEN__','table-fixture');
- let reads=0,hold=null,notify=null;const writes=[];
+ let reads=0,hold=null,notify=null,change=false;const writes=[];
  const server=http.createServer(async(req,res)=>{
   const pathname=new URL(req.url,'http://fixture').pathname;
   if(pathname==='/memory/sources/1'){res.setHeader('content-type','text/html');return res.end(html);}
@@ -27,7 +27,8 @@ test('table controls remain live after copying the source link with a cell selec
   assert.equal(req.headers.authorization,'Bearer table-fixture');
   if(pathname==='/v1/status')return res.end(JSON.stringify({space:'table-test',episodes:1}));
   if(pathname==='/v1/capabilities')return res.end(JSON.stringify({...contract.rust,features:{...contract.rust.features,'episodes.read':true,'documents.provenance':true,'episodes.attachments':false}}));
-  if(pathname==='/v1/episodes/1')return res.end(JSON.stringify({episode_id:1,kind:'file',source:'revenue.html',created_at:'2026-09-11',content:'Revenue\n\nRevenue: €20',metadata:{document_original:original.attachment_id,document_manifest:manifest.attachment_id,document_format:'html'},attachments:[original,manifest]}));
+  if(pathname==='/v1/episodes/1'&&change&&failure==='forgotten'){res.statusCode=410;return res.end('{"error":"forgotten"}');}
+  if(pathname==='/v1/episodes/1')return res.end(JSON.stringify({episode_id:1,kind:'file',source:'revenue.html',created_at:'2026-09-11',content:change&&failure==='text'?'Changed source':'Revenue\n\nRevenue: €20',metadata:{document_original:original.attachment_id,document_manifest:change&&failure==='binding'?'c'.repeat(64):manifest.attachment_id,document_format:'html'},attachments:[original,manifest]}));
   if(pathname==='/v1/episodes/1/document'){reads++;notify?.();if(hold)await hold;return res.end(JSON.stringify(evidence));}
   res.statusCode=404;res.end('{}');
  });
@@ -52,4 +53,11 @@ test('table controls remain live after copying the source link with a cell selec
   await panel.getByRole('button',{name:'Read table evidence'}).click();await panel.getByRole('heading',{name:'Table 1 of 1'}).waitFor();
   await panel.getByRole('button',{name:'Clear table evidence'}).click();await panel.getByRole('button',{name:'Read table evidence'}).waitFor();assert.equal(await panel.locator('table').count(),0);assert.deepEqual(writes,[]);
  }finally{release();}
+ if(failure!=='none'){
+  // Return valid retained table bytes, then change the final source read.
+  change=true;await panel.getByRole('button',{name:'Read table evidence',exact:true}).click();
+  await panel.getByRole('alert').waitFor();
+  assert.equal(await panel.locator('table').count(),0);
+  assert.equal(await panel.getByRole('complementary',{name:'Selected table cell'}).count(),0);
+ }
 });

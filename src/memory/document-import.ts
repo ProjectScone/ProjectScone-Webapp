@@ -1,3 +1,5 @@
+import {verifiedSpace} from './source-address.ts';
+import {verifyCurrentDocumentSource} from './document-evidence-read.ts';
 import {ApiError,type ApiClient,type ImageAttachment} from '../api.ts';
 import {documentBinding,parseDocumentEvidence,type DocumentEvidence,type DocumentSource} from './document-evidence.ts';
 import {parsePdfOcrCatalog,parsePdfOcrSelection,samePdfOcr,validatePdfOcr,type PdfOcrCatalog,type PdfOcrSelection} from './document-ocr.ts';
@@ -7,7 +9,7 @@ const MAX_FILE_BYTES=25*1024*1024;
 export interface DocumentFormat {available:boolean;parser:string;requires?:string}
 export interface DocumentFormats {maxInputBytes:number;formats:Map<string,DocumentFormat>;pdfOcr?:PdfOcrCatalog}
 export interface ImportReceipt {episodeId:number;deduplicated:boolean;original:ImageAttachment;manifest:ImageAttachment;filename:string;format:string;segments:number;pdfOcr?:PdfOcrSelection}
-export interface VerifiedImport {receipt:ImportReceipt;source:DocumentSource;evidence:DocumentEvidence}
+export interface VerifiedImport {space:string;receipt:ImportReceipt;source:DocumentSource;evidence:DocumentEvidence}
 export type ImportPhase='uploading'|'indexing'|'verifying';
 export type ImportOutcome={status:'verified';verified:VerifiedImport}|{status:'unverified';receipt:ImportReceipt;error:string}|{status:'uncertain'|'failed';error:string};
 export type ImportApi=Pick<ApiClient,'request'|'uploadDocument'>;
@@ -50,8 +52,10 @@ export function parseReceipt(value:unknown,original:ImageAttachment,filename:str
  if(!samePdfOcr(pdfOcr,expectedOcr))throw Error('Document receipt does not match the selected PDF OCR settings.');
  return {episodeId:count(added.episode_id),deduplicated:added.deduplicated,original:savedOriginal,manifest,filename,format:text(v.format,64),segments:count(v.segments,20000),pdfOcr};
 }
-export async function verifyDocumentImport(api:ImportApi,receipt:ImportReceipt,signal:AbortSignal):Promise<VerifiedImport>{
+export async function verifyDocumentImport(api:ImportApi,receipt:ImportReceipt,signal:AbortSignal,expectedSpace?:string):Promise<VerifiedImport>{
  const active=AbortSignal.any([signal,AbortSignal.timeout(60000)]);active.throwIfAborted();
+ const space=verifiedSpace(await api.request<unknown>('/v1/status',{signal:active,cache:'no-store',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer'}));
+ if(expectedSpace!==undefined&&space!==expectedSpace)throw Error('The connected memory space changed.');
  const episode=record(await api.request<unknown>(`/v1/episodes/${receipt.episodeId}`,{signal:active,cache:'no-store',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer'}));
  if(episode.episode_id!==receipt.episodeId||episode.kind!=='file'||typeof episode.content!=='string'||encoder.encode(episode.content).length>2000000)throw Error('Saved source does not match this document.');
  const binding=documentBinding(episode);if(!binding||binding.format!==receipt.format)throw Error('Saved document attachments are missing or changed.');
@@ -60,7 +64,8 @@ export async function verifyDocumentImport(api:ImportApi,receipt:ImportReceipt,s
  const evidence=parseDocumentEvidence(await api.request<unknown>(`/v1/episodes/${receipt.episodeId}/document`,{signal:active,cache:'no-store',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer'}),source);
  if(evidence.filename!==receipt.filename||evidence.segments.length!==receipt.segments)throw Error('Saved extraction does not match this document receipt.');
  if(!samePdfOcr(evidence.pdfOcr,receipt.pdfOcr))throw Error('Saved extraction does not match the selected PDF OCR settings.');
- active.throwIfAborted();return {receipt,source,evidence};
+ await verifyCurrentDocumentSource(api,source,receipt.episodeId,active);
+ active.throwIfAborted();return {space,receipt,source,evidence};
 }
 export async function importDocument(api:ImportApi,file:File,catalog:DocumentFormats,signal:AbortSignal,phase:(phase:ImportPhase)=>void,pdfOcr?:PdfOcrSelection):Promise<ImportOutcome>{
  let indexing=false,receipt:ImportReceipt|undefined;
