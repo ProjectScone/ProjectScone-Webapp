@@ -4,9 +4,10 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const http=require('node:http');
 const path=require('node:path');
-const {chromium}=require(process.env.SCONE_PLAYWRIGHT_MODULE||'playwright');
+const engines=require(process.env.SCONE_PLAYWRIGHT_MODULE||'playwright');
+const engine=process.env.SCONE_BROWSER_ENGINE||'chromium';
 let browser;
-before(async()=>{browser=await chromium.launch({headless:true,executablePath:process.env.SCONE_BROWSER_PATH,args:['--disable-gpu']});});
+before(async()=>{browser=await engines[engine].launch({headless:true,executablePath:process.env.SCONE_BROWSER_PATH,...(engine==='chromium'?{args:['--disable-gpu']}:{})});});
 after(async()=>{await browser?.close();});
 async function fixture(t,{mobile=false,clipboardFails=false}={}) {
   const html=fs.readFileSync(process.env.SCONE_LEARN_HTML||path.resolve(__dirname,'../dist/console.html'),'utf8');
@@ -165,4 +166,24 @@ test('keyboard navigation and section links keep the selected concept and readin
     return section&&header&&section.top>=header.bottom&&section.top<header.bottom+48;
   });
   assert.equal(new URL(page.url()).pathname,'/learn/graph-memory');
+});
+
+for(const mobile of [false,true])test(`OCR imports and configured agents are discoverable in the guide, mobile=${mobile}`,async t=>{
+  const {page,base,requests}=await fixture(t,{mobile});
+  await page.goto(base+'/learn/sources');
+  await page.getByRole('heading',{name:'Import originals and inspect the extraction',exact:false}).waitFor();
+  await page.getByRole('button',{name:'Copy page',exact:true}).click();
+  assert.match(await page.evaluate(()=>window.copiedText),/SCONE_DOCUMENT_OCR_EXECUTABLE/);
+  await page.getByRole('searchbox',{name:'Search documentation',exact:true}).fill('handoff');
+  await page.getByRole('navigation',{name:'Documentation search results'}).getByRole('link',{name:/API reference/}).click();
+  assert.equal(new URL(page.url()).pathname,'/learn/api');
+  await page.reload();
+  await page.getByRole('heading',{name:'Choose models and run agent workflows',exact:false}).waitFor();
+  await page.getByRole('button',{name:'Copy page',exact:true}).click();
+  const text=await page.evaluate(()=>window.copiedText);
+  assert.match(text,/SCONE_AGENTS_CONFIG/);
+  assert.match(text,/\/v1\/agent-runs/);
+  assert.equal(await page.getByRole('link',{name:'Open Agents',exact:true}).getAttribute('href'),'/agents');
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  assert.deepEqual(requests.filter(r=>r.url.startsWith('/v1/')),[],'reading setup must not invoke a service');
 });
