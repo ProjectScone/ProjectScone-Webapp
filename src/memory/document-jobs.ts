@@ -14,7 +14,7 @@ export interface DocumentJobRequest {pdfOcr?:PdfOcrSelection}
 export interface DocumentJobSubmission {space:string;filename:string;attachmentId:string;pdfOcr?:PdfOcrSelection}
 const bad=()=>Error('The server returned inconsistent document job details.');
 function record(value:unknown):Record<string,unknown>{if(!value||typeof value!=='object'||Array.isArray(value))throw bad();return value as Record<string,unknown>;}
-function text(value:unknown,max=1024):string{if(typeof value!=='string'||!value.length||value.length>max||value.includes('\0')||new TextDecoder().decode(new TextEncoder().encode(value))!==value)throw bad();return value;}
+function text(value:unknown,max=1024):string{if(typeof value!=='string'||!value.length||value.length>max||value.includes('\0')||new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(new TextEncoder().encode(value))!==value)throw bad();return value;}
 function integer(value:unknown,min=0,max=2147483647):number{if(typeof value!=='number'||!Number.isSafeInteger(value)||value<min||value>max)throw bad();return value;}
 function flag(value:unknown):boolean{if(typeof value!=='boolean')throw bad();return value;}
 function identifier(value:unknown):string{const result=text(value,128);if(!/^[A-Za-z0-9][A-Za-z0-9_.:-]*$/.test(result))throw bad();return result;}

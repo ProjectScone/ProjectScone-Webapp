@@ -42,3 +42,8 @@ test('local submission binds OCR selection and explicit opt-out independently of
  assert.throws(()=>parseDocumentJobRequest(saved,job,{...expected,pdfOcr:undefined}),/submitted/);
  assert.throws(()=>parseDocumentJobRequest(saved,job,{...expected,attachmentId:'b'.repeat(64)}));
 });
+
+test('job history preserves a literal leading Unicode BOM in a valid filename',()=>{
+ const job=parseDocumentJob({...raw(),filename:'\uFEFFnotes.md'},'alpha');
+ assert.equal(job.filename,'\uFEFFnotes.md');
+});
