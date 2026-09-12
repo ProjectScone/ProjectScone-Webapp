@@ -2,7 +2,12 @@ export interface ModelChoice {model_id:string;label:string;revision:string}
 export interface AgentChoice {agent_id:string;default_model:string;models:ModelChoice[]}
 export interface AgentTask {task_id:string;agent_id:string;model_id:string;prompt:string;depends_on:string[]}
 export interface AgentPlan {workflow_id:string;tasks:AgentTask[]}
-export interface SavedPlan {space:string;revision:number;plan:AgentPlan;configuration_current:boolean;updated_at:string;bindings:Record<string,string>}
+export interface HandoffAgent {agent_id:string;model_id:string;can_handoff_to:string[]}
+export interface HandoffPlan {workflow_id:string;root_agent:string;max_handoffs:number;agents:HandoffAgent[]}
+export type WorkflowPlan=AgentPlan|HandoffPlan;
+export interface SavedPlan {space:string;revision:number;plan:WorkflowPlan;configuration_current:boolean;updated_at:string;bindings:Record<string,string>}
+export function isHandoffPlan(plan:WorkflowPlan):plan is HandoffPlan{return 'agents' in plan;}
+export function bindingIds(plan:WorkflowPlan):string[]{return isHandoffPlan(plan)?plan.agents.map(agent=>agent.agent_id):plan.tasks.map(task=>task.task_id);}
 export function record(value:unknown):Record<string,unknown>{
  if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid agent configuration response.');
  return value as Record<string,unknown>;
@@ -31,8 +36,22 @@ export function parseCatalog(value:unknown):AgentChoice[]{
  });
  unique(agents.map(agent=>agent.agent_id));return agents;
 }
-function parsePlan(value:unknown):AgentPlan{
- const row=record(value),tasks=list(row.tasks,32).map(value=>{
+function parsePlan(value:unknown):WorkflowPlan{
+ const row=record(value);
+ if('agents' in row){
+  if(Object.keys(row).some(key=>!['workflow_id','root_agent','max_handoffs','agents'].includes(key)))throw Error('Invalid handoff plan fields.');
+  const agents=list(row.agents,32).map(value=>{
+   const agent=record(value),can_handoff_to=list(agent.can_handoff_to,32).map(identifier);unique(can_handoff_to);
+   if(Object.keys(agent).some(key=>!['agent_id','model_id','can_handoff_to'].includes(key)))throw Error('Invalid handoff agent fields.');
+   return {agent_id:identifier(agent.agent_id),model_id:identifier(agent.model_id),can_handoff_to};
+  });
+  unique(agents.map(agent=>agent.agent_id));const known=new Set(agents.map(agent=>agent.agent_id)),root_agent=identifier(row.root_agent);
+  if(!agents.length||!known.has(root_agent)||agents.some(agent=>agent.can_handoff_to.some(id=>!known.has(id))))throw Error('Choose a known root agent and permitted handoff targets.');
+  if(typeof row.max_handoffs!=='number'||!Number.isInteger(row.max_handoffs)||row.max_handoffs<0||row.max_handoffs>31)throw Error('Allow between 0 and 31 handoffs.');
+  return {workflow_id:identifier(row.workflow_id),root_agent,max_handoffs:row.max_handoffs,agents};
+ }
+ if(Object.keys(row).some(key=>!['workflow_id','tasks'].includes(key)))throw Error('Invalid task plan fields.');
+ const tasks=list(row.tasks,32).map(value=>{
   const task=record(value),prompt=text(task.prompt,2000),depends_on=list(task.depends_on,31).map(identifier);
   if(new TextEncoder().encode(prompt).length>2000)throw Error('Each task instruction must fit within 2,000 UTF-8 bytes.');
   unique(depends_on);
@@ -50,18 +69,20 @@ function parsePlan(value:unknown):AgentPlan{
  }
  return {workflow_id:identifier(row.workflow_id),tasks};
 }
-export function validatePlan(value:unknown,catalog:AgentChoice[]):AgentPlan{
+export function validatePlan(value:unknown,catalog:AgentChoice[]):WorkflowPlan{
  const plan=parsePlan(value);
- if(plan.tasks.some(task=>!catalog.find(agent=>agent.agent_id===task.agent_id)?.models.some(model=>model.model_id===task.model_id)))throw Error('Choose an available agent and allowed model for every task.');
+ const selections=isHandoffPlan(plan)?plan.agents:plan.tasks;
+ if(selections.some(task=>!catalog.find(agent=>agent.agent_id===task.agent_id)?.models.some(model=>model.model_id===task.model_id)))throw Error('Choose an available agent and allowed model for every step.');
  return plan;
 }
 export function parseSavedPlan(value:unknown,space:string):SavedPlan{
  const row=record(value),plan=parsePlan(row.plan),bindings=record(row.bindings);
  if(row.space!==space||!Number.isSafeInteger(row.revision)||(row.revision as number)<1||typeof row.configuration_current!=='boolean')throw Error('Saved plan does not match the connected space or revision.');
- if(Object.keys(bindings).length!==plan.tasks.length||plan.tasks.some(task=>typeof bindings[task.task_id]!=='string'||!/^[a-f0-9]{64}$/.test(bindings[task.task_id] as string)))throw Error('Invalid saved model binding.');
+ const ids=bindingIds(plan);
+ if(Object.keys(bindings).length!==ids.length||ids.some(id=>typeof bindings[id]!=='string'||!/^[a-f0-9]{64}$/.test(bindings[id] as string)))throw Error('Invalid saved model binding.');
  const updated_at=text(row.updated_at,64);
  if(!Number.isFinite(Date.parse(updated_at)))throw Error('Invalid plan update time.');
- return {space,revision:row.revision as number,plan,configuration_current:row.configuration_current,updated_at,bindings:Object.fromEntries(plan.tasks.map(task=>[task.task_id,bindings[task.task_id] as string]))};
+ return {space,revision:row.revision as number,plan,configuration_current:row.configuration_current,updated_at,bindings:Object.fromEntries(ids.map(id=>[id,bindings[id] as string]))};
 }
 export function parsePlanPage(value:unknown,space:string):{items:SavedPlan[];next_after:string|null}{
  const row=record(value),items=list(row.items,100).map(item=>parseSavedPlan(item,space));
@@ -70,7 +91,7 @@ export function parsePlanPage(value:unknown,space:string):{items:SavedPlan[];nex
  return {items,next_after:row.next_after as string|null};
 }
 export function planAddress(id:string):string{return '/v1/agent-plans/'+encodeURIComponent(identifier(id));}
-export function parseSavedEdit(value:unknown,space:string,expected:AgentPlan,revision:number):SavedPlan{
+export function parseSavedEdit(value:unknown,space:string,expected:WorkflowPlan,revision:number):SavedPlan{
  const saved=parseSavedPlan(value,space);
  if(saved.revision!==revision+1||JSON.stringify(saved.plan)!==JSON.stringify(expected))throw Error('Saved response does not match the selected tasks and models. Reload the saved workflow to check its state.');
  return saved;

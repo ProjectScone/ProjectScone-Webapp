@@ -1,7 +1,8 @@
-import {identifier,parseSavedPlan,record,type AgentPlan} from './plans.ts';
+import {bindingIds,identifier,isHandoffPlan,parseSavedPlan,record,type WorkflowPlan,type HandoffPlan} from './plans.ts';
 export interface RunStatus {space:string;run_id:string;created_at:string;workflow_id:string;plan_revision:number;status:string;active_local:boolean;completed_steps:string[];inflight:string|null;outcome_unknown:boolean;error_class:string|null;max_parallel:number;inflight_steps:string[]}
-export interface RunRequest {space:string;run_id:string;question:string;created_at:string;plan:AgentPlan;revision:number;bindings:Record<string,string>;max_parallel:number}
-export interface TaskOutput {task_id:string;agent_id:string;model_id:string;text:string;source_status:'retained'|'none';evidence_ids:string[];model_calls:number;tool_calls:number}
+export interface RunRequest {space:string;run_id:string;question:string;created_at:string;plan:WorkflowPlan;revision:number;bindings:Record<string,string>;max_parallel:number}
+export interface TaskOutput {task_id:string;agent_id:string;model_id:string;text:string;source_status:'retained'|'none';evidence_ids:string[];model_calls:number;tool_calls:number;handoff_to?:string|null}
+export interface RunResult {tasks:TaskOutput[];outcome?:'completed'|'handoff_limit';finalTask?:string|null}
 function fail():never{throw Error('The run response could not be verified.');}
 function text(value:unknown,max:number):string{if(typeof value!=='string'||!value.trim()||value.length>max)fail();return value;}
 function integer(value:unknown,min:number,max=Number.MAX_SAFE_INTEGER):number{if(typeof value!=='number'||!Number.isSafeInteger(value)||value<min||value>max)fail();return value;}
@@ -37,15 +38,53 @@ export function parseRunRequest(value:unknown,space:string,runId:string):RunRequ
  if(row.space!==space||row.run_id!==runId)fail();
  const saved=parseSavedPlan({...raw,configuration_current:false},space),bindings=record(raw.bindings);
  const question=text(row.question,4000);validateStart(runId,saved.plan.workflow_id,saved.revision,question);
- return {space,run_id:identifier(runId),created_at:date(row.created_at),question,plan:saved.plan,revision:saved.revision,max_parallel:integer(row.max_parallel===undefined?1:row.max_parallel,1,8),
-  bindings:Object.fromEntries(saved.plan.tasks.map(task=>[task.task_id,text(bindings[task.task_id],64)]))};
+ const max_parallel=integer(row.max_parallel===undefined?1:row.max_parallel,1,isHandoffPlan(saved.plan)?1:8);
+ return {space,run_id:identifier(runId),created_at:date(row.created_at),question,plan:saved.plan,revision:saved.revision,max_parallel,
+  bindings:Object.fromEntries(bindingIds(saved.plan).map(id=>[id,text(bindings[id],64)]))};
 }
+function hopIds(plan:HandoffPlan):string[]{return Array.from({length:plan.max_handoffs+1},(_,index)=>`hop-${String(index+1).padStart(2,'0')}`);}
 export function matchRun(status:RunStatus,request:RunRequest):void{
  if(status.run_id!==request.run_id||status.space!==request.space||status.workflow_id!==request.plan.workflow_id||status.plan_revision!==request.revision||status.max_parallel!==request.max_parallel||Date.parse(status.created_at)!==Date.parse(request.created_at))fail();
- const known=new Set(request.plan.tasks.map(task=>task.task_id));
+ const ids=isHandoffPlan(request.plan)?hopIds(request.plan):bindingIds(request.plan),known=new Set(ids);
  if([...status.completed_steps,...status.inflight_steps].some(id=>!known.has(id))||(status.inflight!==null&&!known.has(status.inflight)))fail();
+ if(isHandoffPlan(request.plan)&&JSON.stringify(status.completed_steps)!==JSON.stringify(ids.slice(0,status.completed_steps.length)))fail();
+ if(isHandoffPlan(request.plan)&&status.inflight!==null&&status.inflight!==ids[status.completed_steps.length])fail();
 }
-export function parseRunResult(value:unknown,request:RunRequest):{tasks:TaskOutput[]}{
+function parseOutput(value:unknown,expected:{task_id:string;agent_id:string;model_id:string;binding:string;depends_on:string[]}):{output:TaskOutput;packets:string[]}{
+ const output=record(value);
+ if(output.task_id!==expected.task_id||output.agent_id!==expected.agent_id||output.model_id!==expected.model_id||output.binding!==expected.binding||JSON.stringify(names(output.depends_on))!==JSON.stringify(expected.depends_on))fail();
+ const evidence_ids=list(output.evidence_ids,2048).map(id=>text(id,4096));
+ const packets=list(output.evidence_packets,32).map(packet=>text(packet,1_048_576));
+ if(output.source_status!==(evidence_ids.length?'retained':'none'))fail();
+ return {output:{task_id:expected.task_id,agent_id:expected.agent_id,model_id:expected.model_id,text:text(output.text,64000),source_status:output.source_status as 'retained'|'none',evidence_ids,model_calls:integer(output.model_calls,1,17),tool_calls:integer(output.tool_calls,0,16)},packets};
+}
+function parseHandoffResult(row:Record<string,unknown>,request:RunRequest,plan:HandoffPlan):RunResult{
+ const hops=list(row.hops,plan.max_handoffs+1),ids=hopIds(plan).slice(0,hops.length),tasks:TaskOutput[]=[];
+ if(!hops.length||row.space!==request.space||row.run_id!==request.run_id||!['completed','handoff_limit'].includes(String(row.status)))fail();
+ if(names(row.reused_hops).some(id=>!ids.includes(id)))fail();
+ let current:string|null=plan.root_agent,packetCount=0;
+ for(const [index,value] of hops.entries()){
+  const hop=record(value),agent=plan.agents.find(agent=>agent.agent_id===current);
+  if(!agent)fail();
+  const expected={task_id:ids[index],agent_id:agent.agent_id,model_id:agent.model_id,binding:request.bindings[agent.agent_id],depends_on:index?[ids[index-1]]:[]};
+  const parsed=parseOutput(hop.output,expected);packetCount+=parsed.packets.length;
+  const next=hop.handoff_to===null?null:identifier(hop.handoff_to);
+  if(next!==null&&!agent.can_handoff_to.includes(next))fail();
+  if(index<hops.length-1&&next===null)fail();
+  tasks.push({...parsed.output,handoff_to:next});current=next;
+  if(index===hops.length-1){
+   if(next===null){
+    if(row.status!=='completed')fail();
+    const final=parseOutput(row.final,expected);
+    if(JSON.stringify(final)!==JSON.stringify(parsed))fail();
+   }else if(row.status!=='handoff_limit'||hops.length!==plan.max_handoffs+1||row.final!==null)fail();
+  }
+ }
+ if(packetCount>128)fail();
+ return {tasks,outcome:current===null?'completed':'handoff_limit',finalTask:current===null?ids[ids.length-1]:null};
+}
+export function parseRunResult(value:unknown,request:RunRequest):RunResult{
+ if(isHandoffPlan(request.plan))return parseHandoffResult(record(value),request,request.plan);
  const row=record(value),results=record(row.results),known=new Set(request.plan.tasks.map(task=>task.task_id));
  if(row.space!==request.space||row.run_id!==request.run_id||row.status!=='completed'||Object.keys(results).length!==known.size)fail();
  if(names(row.reused_steps).some(id=>!known.has(id)))fail();
@@ -64,7 +103,7 @@ export function parseRunResult(value:unknown,request:RunRequest):{tasks:TaskOutp
 
 export type RunSubmission=Omit<RunRequest,'created_at'>;
 export function matchSubmission(request:RunRequest,expected:RunSubmission):void{
- if(request.space!==expected.space||request.run_id!==expected.run_id||request.question!==expected.question||request.revision!==expected.revision||request.max_parallel!==expected.max_parallel||JSON.stringify(request.plan)!==JSON.stringify(expected.plan)||request.plan.tasks.some(task=>request.bindings[task.task_id]!==expected.bindings[task.task_id]))throw Error('The recorded run does not match the submitted question, tasks and models. Its output has been withheld.');
+ if(request.space!==expected.space||request.run_id!==expected.run_id||request.question!==expected.question||request.revision!==expected.revision||request.max_parallel!==expected.max_parallel||JSON.stringify(request.plan)!==JSON.stringify(expected.plan)||bindingIds(request.plan).some(id=>request.bindings[id]!==expected.bindings[id]))throw Error('The recorded run does not match the submitted question, workflow and models. Its output has been withheld.');
 }
 
 export function parseRunPolicy(value:unknown,space:string):number{
