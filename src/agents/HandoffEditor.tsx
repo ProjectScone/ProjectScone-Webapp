@@ -1,8 +1,10 @@
 import {useEffect,useRef,useState} from 'react';
 import {ApiError,type ApiClient} from '../api';
 import {isHandoffPlan,parseSavedEdit,planAddress,validatePlan,type AgentChoice,type HandoffAgent,type HandoffPlan,type SavedPlan} from './plans';
+import {OutputRequirementsEditor} from './OutputRequirementsEditor';
+import {requireOutputCapabilities} from './output-requirements';
 const secureRequest={cache:'no-store',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer'} as const;
-export function HandoffEditor({api,space,catalog,initial,onSave,onDirty}:{api:ApiClient;space:string;catalog:AgentChoice[];initial:SavedPlan|null;onSave:(plan:SavedPlan)=>void;onDirty:()=>void}){
+export function HandoffEditor({api,space,catalog,initial,onSave,onDirty,handoffRequirementsAvailable,schemaAvailable}:{handoffRequirementsAvailable:boolean;schemaAvailable:boolean;api:ApiClient;space:string;catalog:AgentChoice[];initial:SavedPlan|null;onSave:(plan:SavedPlan)=>void;onDirty:()=>void}){
  const first=catalog[0];
  const [plan,setPlan]=useState<HandoffPlan>(initial&&isHandoffPlan(initial.plan)?initial.plan:{workflow_id:'',root_agent:first?.agent_id??'',max_handoffs:3,agents:first?[{agent_id:first.agent_id,model_id:first.default_model,can_handoff_to:[]}]:[]});
  const [revision,setRevision]=useState(initial?.revision??0),[busy,setBusy]=useState(false),[issue,setIssue]=useState(''),[notice,setNotice]=useState(''),[reviewRequired,setReviewRequired]=useState(initial?.configuration_current===false);
@@ -12,7 +14,7 @@ export function HandoffEditor({api,space,catalog,initial,onSave,onDirty}:{api:Ap
  const save=async()=>{
   if(busy)return;setIssue('');setNotice('');const controller=new AbortController();active.current=controller;
   try{
-   const valid=validatePlan(plan,catalog);setBusy(true);
+   const valid=validatePlan(plan,catalog);requireOutputCapabilities(valid,false,schemaAvailable,handoffRequirementsAvailable);setBusy(true);
    const saved=parseSavedEdit(await api.request<unknown>(planAddress(valid.workflow_id),{...secureRequest,method:'PUT',body:JSON.stringify({expected_revision:revision,plan:valid}),signal:AbortSignal.any([controller.signal,AbortSignal.timeout(15000)])}),space,valid,revision);
    if(!isHandoffPlan(saved.plan))throw Error('The server returned a different workflow type.');
    if(!controller.signal.aborted){setPlan(saved.plan);setRevision(saved.revision);setReviewRequired(!saved.configuration_current);onSave(saved);setNotice(`Saved revision ${saved.revision}.`);}
@@ -20,7 +22,7 @@ export function HandoffEditor({api,space,catalog,initial,onSave,onDirty}:{api:Ap
   finally{if(!controller.signal.aborted)setBusy(false);}
  };
  const unused=catalog.filter(choice=>!plan.agents.some(agent=>agent.agent_id===choice.agent_id));
- return <form className="agent-editor" onSubmit={event=>{event.preventDefault();void save();}}>
+ return <form className="agent-editor" onChange={onDirty} onSubmit={event=>{event.preventDefault();void save();}}>
   <h2>{initial?'Edit handoff workflow':'New handoff workflow'}</h2>
   <p>Agents choose when to finish or pass work to an allowed agent. Each keeps the model you select.</p>
   {reviewRequired&&<p className="agent-notice" role="status">The host changed an agent or model configuration. Review every agent and save a new revision before running it.</p>}
@@ -29,6 +31,10 @@ export function HandoffEditor({api,space,catalog,initial,onSave,onDirty}:{api:Ap
    <div className="agent-fields"><label>Starting agent<select aria-label="Starting agent" value={plan.root_agent} onChange={event=>edit(value=>({...value,root_agent:event.target.value}))}>{plan.agents.map(agent=><option key={agent.agent_id} value={agent.agent_id}>{agent.agent_id}</option>)}</select></label>
    <label>Maximum handoffs<input aria-label="Maximum handoffs" type="number" min={0} max={31} step={1} required value={Number.isFinite(plan.max_handoffs)?plan.max_handoffs:''} onChange={event=>edit(value=>({...value,max_handoffs:event.target.value===''?Number.NaN:Number(event.target.value)}))}/></label></div>
    <p>Up to {Number.isFinite(plan.max_handoffs)?plan.max_handoffs+1:'—'} agent steps. Repeated agents are allowed only through the targets below. Reaching the limit keeps partial work and returns no final answer.</p>
+   {(handoffRequirementsAvailable||plan.answer_requirements)&&<section aria-label="Final answer contract">
+    <h3>Final answer</h3><p>Requirements apply when an agent finishes the workflow. Agents can pass ordinary text notes between steps.</p>
+    <OutputRequirementsEditor value={plan.answer_requirements} available={handoffRequirementsAvailable} schemaAvailable={schemaAvailable} onChange={answer_requirements=>edit(value=>({...value,answer_requirements}))}/>
+   </section>}
    {plan.agents.map((selected,index)=>{
     const agent=catalog.find(choice=>choice.agent_id===selected.agent_id);
     return <section className="agent-task" key={selected.agent_id} aria-label={`Handoff agent ${selected.agent_id}`}>

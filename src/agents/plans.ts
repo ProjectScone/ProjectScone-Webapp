@@ -20,7 +20,7 @@ export function isInputTask(task:TaskNode):task is HumanInputTask{return 'kind' 
 export function isInteractivePlan(plan:WorkflowPlan):plan is InteractivePlan{return 'kind' in plan&&plan.kind==='interactive';}
 export interface AgentPlan {workflow_id:string;tasks:AgentTask[]}
 export interface HandoffAgent {agent_id:string;model_id:string;can_handoff_to:string[]}
-export interface HandoffPlan {workflow_id:string;root_agent:string;max_handoffs:number;agents:HandoffAgent[]}
+export interface HandoffPlan {workflow_id:string;root_agent:string;max_handoffs:number;agents:HandoffAgent[];answer_requirements?:OutputRequirements}
 export type WorkflowPlan=AgentPlan|HandoffPlan|InteractivePlan;
 export interface SavedPlan {space:string;revision:number;plan:WorkflowPlan;configuration_current:boolean;updated_at:string;bindings:Record<string,string>}
 export function isHandoffPlan(plan:WorkflowPlan):plan is HandoffPlan{return 'agents' in plan;}
@@ -56,7 +56,7 @@ export function parseCatalog(value:unknown):AgentChoice[]{
 function parsePlan(value:unknown):WorkflowPlan{
  const row=record(value);
  if('agents' in row){
-  if(Object.keys(row).some(key=>!['workflow_id','root_agent','max_handoffs','agents'].includes(key)))throw Error('Invalid handoff plan fields.');
+  if(Object.keys(row).some(key=>!['workflow_id','root_agent','max_handoffs','agents','answer_requirements'].includes(key)))throw Error('Invalid handoff plan fields.');
   const agents=list(row.agents,32).map(value=>{
    const agent=record(value),can_handoff_to=list(agent.can_handoff_to,32).map(identifier);unique(can_handoff_to);
    if(Object.keys(agent).some(key=>!['agent_id','model_id','can_handoff_to'].includes(key)))throw Error('Invalid handoff agent fields.');
@@ -65,7 +65,7 @@ function parsePlan(value:unknown):WorkflowPlan{
   unique(agents.map(agent=>agent.agent_id));const known=new Set(agents.map(agent=>agent.agent_id)),root_agent=identifier(row.root_agent);
   if(!agents.length||!known.has(root_agent)||agents.some(agent=>agent.can_handoff_to.some(id=>!known.has(id))))throw Error('Choose a known root agent and permitted handoff targets.');
   if(typeof row.max_handoffs!=='number'||!Number.isInteger(row.max_handoffs)||row.max_handoffs<0||row.max_handoffs>31)throw Error('Allow between 0 and 31 handoffs.');
-  return {workflow_id:identifier(row.workflow_id),root_agent,max_handoffs:row.max_handoffs,agents};
+  return {workflow_id:identifier(row.workflow_id),root_agent,max_handoffs:row.max_handoffs,agents,...(row.answer_requirements==null?{}:{answer_requirements:parseOutputRequirements(row.answer_requirements)})};
  }
  const interactive=row.kind==='interactive';
  if(('kind' in row&&!interactive)||Object.keys(row).some(key=>!['workflow_id','tasks',...(interactive?['kind']:[])].includes(key)))throw Error('Invalid task plan fields.');

@@ -26,11 +26,15 @@ async def run():
             with (state / 'calls.jsonl').open('a') as output:
                 output.write(json.dumps({'model': self.name, 'messages': messages}) + '\n')
             usage = ModelTokenUsage(prompt_tokens=120, completion_tokens=18, total_tokens=138) if self.name == 'careful' else ModelTokenUsage(prompt_tokens=25)
+            if 'Return answer and handoff_to.' in json.dumps(messages):
+                writing = any(message.get('content', '').startswith('Write the final answer.') for message in messages)
+                value = {'answer': {'name': 'Juniper' if self.name == 'careful' else 2}, 'handoff_to': None} if writing else {'answer': 'Ordinary research notes', 'handoff_to': 'writer'}
+                return ToolStep(content=json.dumps(value), usage=usage)
             return ToolStep(content='{"name":"Juniper"}' if self.name == 'careful' else 'Invalid plain-text result', usage=usage)
     catalog = AgentCatalog(models=[AgentModel(name, name.title() + ' local', '1', lambda name=name: Model(name))
                                    for name in ('fast', 'careful')], agents=[AgentDefinition(
         agent_id='worker', instructions='Use the provided direction.', models=('fast', 'careful'),
-        default_model='fast', initial_search=False)])
+        default_model='fast', initial_search=False), AgentDefinition(agent_id='writer', instructions='Write the final answer.', models=('fast', 'careful'), default_model='careful', initial_search=False)])
     plans = AgentPlanStore(state / 'plans.sqlite', key=b'k' * 32)
     service = AgentRunService(state / 'runs', key=b'k' * 32, catalog=catalog, plans=plans, memory=memory,
                               scope_for=lambda space: RecallScope.validated())

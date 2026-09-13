@@ -31,7 +31,7 @@ export function OutputRequirementsEditor({value,onChange,available,schemaAvailab
      catch(error){const message=error instanceof Error?error.message:'Check the JSON schema.';setIssue(message);event.target.setCustomValidity(message);}
     }}/></label>
     {!schemaAvailable&&<p>This server does not support JSON schemas.</p>}
-    <p>The server validates schema fields and values. An invalid answer stops the task; it is not automatically rewritten.</p>
+    <p>The server validates schema fields and values. An invalid answer stops execution; it is not automatically rewritten.</p>
    </>}
    <p>Output requirements do not establish factual accuracy. The host’s existing answer limits still apply.</p>
   </>}
