@@ -13,7 +13,7 @@ import {AgentTools} from './AgentTools';
 
 const secureRequest={cache:'no-store',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer'} as const;
 
-type Ready={approvalsAvailable:boolean;handoffRequirementsAvailable:boolean;requirementsAvailable:boolean;schemaAvailable:boolean;usageAvailable:boolean;inputsAvailable:boolean;handoffsAvailable:boolean;runsAvailable:boolean;maxParallel:number;space:string;catalog:AgentChoice[];items:SavedPlan[];next_after:string|null};
+type Ready={historyAvailable:boolean;approvalsAvailable:boolean;handoffRequirementsAvailable:boolean;requirementsAvailable:boolean;schemaAvailable:boolean;usageAvailable:boolean;inputsAvailable:boolean;handoffsAvailable:boolean;runsAvailable:boolean;maxParallel:number;space:string;catalog:AgentChoice[];items:SavedPlan[];next_after:string|null};
 function Editor({api,space,catalog,initial,onSave,onDirty,inputsAvailable,requirementsAvailable,schemaAvailable}:{api:ApiClient;space:string;catalog:AgentChoice[];initial:SavedPlan|null;onSave:(plan:SavedPlan)=>void;onDirty:()=>void;inputsAvailable:boolean;requirementsAvailable:boolean;schemaAvailable:boolean}){
  const first=catalog[0];
  const newTask=(id:string):AgentTask=>({task_id:id,agent_id:first?.agent_id??'',model_id:first?.default_model??'',prompt:'',depends_on:[]});
@@ -80,7 +80,7 @@ export function AgentsPage({api,enabled}:{api:ApiClient;enabled:boolean}){
    if(!caps.features['agents.catalog']||!caps.features['agents.plans'])throw Error('Agent workflow configuration is not enabled on this server.');
    const [catalog,page]=await Promise.all([api.request<unknown>('/v1/agents/catalog',options).then(parseCatalog),api.request<unknown>('/v1/agent-plans?limit=20',options).then(value=>parsePlanPage(value,status.space as string))]);
    const maxParallel=caps.features['agents.parallel']?parseRunPolicy(await api.request<unknown>('/v1/agents/run-policy',options),status.space):1;
-   if(!controller.signal.aborted)setLoaded({api,data:{approvalsAvailable:caps.features['agents.approvals'],handoffRequirementsAvailable:caps.features['agents.handoffs.output_requirements'],requirementsAvailable:caps.features['agents.output_requirements'],schemaAvailable:caps.features['agents.output_schema'],usageAvailable:caps.features['agents.usage'],inputsAvailable:caps.features['agents.inputs'],handoffsAvailable:caps.features['agents.handoffs'],maxParallel,runsAvailable:caps.features['agents.runs'],space:status.space,catalog,...page}});
+   if(!controller.signal.aborted)setLoaded({api,data:{historyAvailable:caps.features['agents.history'],approvalsAvailable:caps.features['agents.approvals'],handoffRequirementsAvailable:caps.features['agents.handoffs.output_requirements'],requirementsAvailable:caps.features['agents.output_requirements'],schemaAvailable:caps.features['agents.output_schema'],usageAvailable:caps.features['agents.usage'],inputsAvailable:caps.features['agents.inputs'],handoffsAvailable:caps.features['agents.handoffs'],maxParallel,runsAvailable:caps.features['agents.runs'],space:status.space,catalog,...page}});
   })().catch(error=>{if(!controller.signal.aborted)setError(error instanceof Error?error.message:'Agent configuration could not be loaded.');}).finally(()=>{if(!controller.signal.aborted)setLoading(false);});
   return()=>controller.abort();
  },[api,enabled,refresh]);
@@ -101,7 +101,7 @@ export function AgentsPage({api,enabled}:{api:ApiClient;enabled:boolean}){
    {(()=>{
     const props={api,handoffRequirementsAvailable:data.handoffRequirementsAvailable,requirementsAvailable:data.requirementsAvailable,schemaAvailable:data.schemaAvailable,inputsAvailable:data.inputsAvailable,space:data.space,catalog:data.catalog,initial:selection.plan,onDirty:()=>setDirty(true),onSave:(saved:SavedPlan)=>{setDirty(false);setSelection(current=>({...current,plan:saved}));setLoaded(current=>current?.api===api?{api,data:{...current.data,items:[saved,...current.data.items.filter(item=>item.plan.workflow_id!==saved.plan.workflow_id)]}}:current);}};
     return (selection.plan?isHandoffPlan(selection.plan.plan):selection.handoff)?data.handoffsAvailable?<HandoffEditor key={selection.id} {...props}/>:<p role="alert">This server does not support handoff configuration.</p>:selection.plan&&isInteractivePlan(selection.plan.plan)&&!data.inputsAvailable?<p role="alert">This server does not support human input workflows.</p>:<Editor key={selection.id} {...props}/>;
-   })()}</div>{data.runsAvailable&&<RunPanel key={data.space} api={api} space={data.space} plan={selection.plan} dirty={dirty} maxParallel={data.maxParallel} handoffsAvailable={data.handoffsAvailable} inputsAvailable={data.inputsAvailable} usageAvailable={data.usageAvailable} approvalsAvailable={data.approvalsAvailable}/>} {error&&<p role="alert">{error}</p>}
+   })()}</div>{data.runsAvailable&&<RunPanel key={data.space} api={api} space={data.space} historyAvailable={data.historyAvailable} plan={selection.plan} dirty={dirty} maxParallel={data.maxParallel} handoffsAvailable={data.handoffsAvailable} inputsAvailable={data.inputsAvailable} usageAvailable={data.usageAvailable} approvalsAvailable={data.approvalsAvailable}/>} {error&&<p role="alert">{error}</p>}
   </>}
  </main>;
 }

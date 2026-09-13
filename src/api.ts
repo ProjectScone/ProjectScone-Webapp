@@ -2,6 +2,7 @@ import {readDocumentOriginal,validateOriginalReference} from './memory/document-
 import {readVideoFrame,validateVideoFrameReference,type VideoFrameReference} from './memory/document-video-frame.ts';
 import {exportAddress,readGraphExport,type GraphExportRequest,type GraphExportFile} from './memory/knowledge-export.ts';
 import {attachVoiceSocket,type VoiceEvents} from './conversations/voice/channel.ts';
+import {historyAddress,historyCursor} from './agents/history.ts';
 import {voiceSocketUrl} from './conversations/voice/wire.ts';
 
 export interface ApiClient {
@@ -14,6 +15,7 @@ export interface ApiClient {
   documentVideoFrame(episodeId:number,frame:VideoFrameReference,signal:AbortSignal):Promise<Blob>;
   documentOriginal(original:ImageAttachment,signal?:AbortSignal):Promise<Blob>;
   conversationStream(sid: string, requestId: string, after: number, signal: AbortSignal): Promise<ReadableStream<Uint8Array>>;
+  historyStream(runId:string,after:string|null,limit:number,signal:AbortSignal):Promise<ReadableStream<Uint8Array>>;
   voiceConnection(sid:string,format:{sampleRate:number;channels:number},events:VoiceEvents,signal:AbortSignal):ReturnType<typeof attachVoiceSocket>;
 }
 
@@ -53,6 +55,24 @@ export function createApiClient(key: string, unauthorized: () => void, base = ''
       signal.throwIfAborted();
       const url=voiceSocketUrl(sid,base||window.location.origin);
       return attachVoiceSocket(new WebSocket(url),key,sid,format,events,signal);
+    },
+    async historyStream(runId,after,limit,signal){
+      if(after!==null)historyCursor(after);
+      if(!Number.isSafeInteger(limit)||limit<1||limit>100)throw Error('Invalid history page size');
+      const path=historyAddress(runId)+'/stream?limit='+limit+(after?'&after='+encodeURIComponent(after):'');
+      const response=await fetch(base+path,{
+        method:'GET',headers:{Authorization:'Bearer '+key,Accept:'text/event-stream',...(after?{'Last-Event-ID':after}:{})},signal,
+        cache:'no-store',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer',
+      });
+      if(!response.ok){
+        await response.body?.cancel();
+        if(response.status===401)unauthorized();
+        throw new ApiError(response.status,`History stream request failed (${response.status})`);
+      }
+      if(response.headers.get('content-type')?.split(';')[0].trim()!=='text/event-stream'||!response.body){
+        await response.body?.cancel();throw Error('Invalid history stream response');
+      }
+      return response.body;
     },
     async conversationStream(sid, requestId, after, signal) {
       if (![sid,requestId].every(id=>/^[A-Za-z0-9._:-]{1,128}$/.test(id)&&id!=='.'&&id!=='..')
