@@ -1,6 +1,7 @@
+import {parseOutputRequirements,type OutputRequirements} from './output-requirements.ts';
 export interface ModelChoice {model_id:string;label:string;revision:string}
 export interface AgentChoice {agent_id:string;default_model:string;models:ModelChoice[]}
-export interface AgentTask {task_id:string;agent_id:string;model_id:string;prompt:string;depends_on:string[]}
+export interface AgentTask {task_id:string;agent_id:string;model_id:string;prompt:string;depends_on:string[];answer_requirements?:OutputRequirements}
 export interface HumanInputTask {kind:'input';task_id:string;prompt:string;depends_on:string[];max_response_bytes:number}
 export type TaskNode=AgentTask|HumanInputTask;
 export function replaceTask(tasks:readonly TaskNode[],index:number,replacement:TaskNode):TaskNode[]{
@@ -77,8 +78,8 @@ function parsePlan(value:unknown):WorkflowPlan{
    if(typeof task.max_response_bytes!=='number'||!Number.isInteger(task.max_response_bytes)||task.max_response_bytes<1||task.max_response_bytes>4000)throw Error('Response limit must be between 1 and 4,000 UTF-8 bytes.');
    return {kind:'input',task_id:identifier(task.task_id),prompt,depends_on,max_response_bytes:task.max_response_bytes};
   }
-  if(Object.keys(task).some(key=>!['task_id','agent_id','model_id','prompt','depends_on'].includes(key)))throw Error('Invalid model task fields.');
-  return {task_id:identifier(task.task_id),agent_id:identifier(task.agent_id),model_id:identifier(task.model_id),prompt,depends_on};
+  if(Object.keys(task).some(key=>!['task_id','agent_id','model_id','prompt','depends_on','answer_requirements'].includes(key)))throw Error('Invalid model task fields.');
+  return {task_id:identifier(task.task_id),agent_id:identifier(task.agent_id),model_id:identifier(task.model_id),prompt,depends_on,...(task.answer_requirements==null?{}:{answer_requirements:parseOutputRequirements(task.answer_requirements)})};
  });
  if(!tasks.length)throw Error('Add at least one task.');
  unique(tasks.map(task=>task.task_id));

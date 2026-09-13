@@ -7,3 +7,8 @@
 .agent-usage th,.agent-usage td {padding:.4rem .5rem;text-align:left;border-bottom:1px solid var(--line, #d8d4ce)}
 .agent-usage td {font-variant-numeric:tabular-nums}
 .agent-usage-note {font-size:.8rem;line-height:1.5;opacity:.8}
+.agent-editor .agent-output-requirements{display:grid;gap:12px;margin-top:20px}
+.agent-output-requirements legend{font-weight:600;margin-bottom:10px}
+.agent-output-requirements p{font-size:.85rem;line-height:1.5;color:var(--muted,#777);margin:0}
+.agent-output-requirements .agent-fields{margin-bottom:0}
+.agent-output-requirements textarea[spellcheck=false]{font-family:ui-monospace,SFMono-Regular,monospace;font-size:.85rem;line-height:1.5}

@@ -607,3 +607,25 @@ This view requires the native workflow usage contract and explicitly requests
 `include_usage=true`. Older servers retain the existing result view. The counts
 are provider reports for completed tasks, not billing totals or quality scores;
 failed and interrupted attempts can consume tokens outside these receipts.
+
+### Task output requirements
+
+When the host advertises `agents.output_requirements`, each model task can choose
+text or JSON-object output, answer instructions, and byte/line limits. Hosts with
+`agents.output_schema` additionally accept an optional JSON schema. Schema drafts
+must be bounded JSON objects without duplicate keys; the host validates schema
+semantics and rejects invalid model answers. The console keeps authored local
+`$defs`/`$ref` intact through saving, loading and immutable run requests. Human
+input tasks retain their existing plain-text reply controls.
+
+Changing requirements creates a new plan revision and requires a new run. Shape
+validation does not establish factual accuracy. The console refuses nonfinite or
+unsafe integer schema values, and schema drafts that lose decimal precision or underflow, rather than silently rounding them; its browser
+number representation is narrower than Python's integers. Servers without these
+capabilities retain the existing workflow editor.
+
+`scripts/test-agent-output-native.cjs` exercises the packaged console against
+actual local native HTTP and encrypted journals at desktop and mobile widths,
+including malformed drafts, selected models, invalid answer withholding and
+process restart without additional inference. It uses the same explicit local
+Python/browser environment variables as the other native browser fixtures.
