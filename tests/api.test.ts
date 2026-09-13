@@ -182,3 +182,30 @@ test('history streams send the cursor both ways and refuse non-SSE responses, re
     status=401;await assert.rejects(client.historyStream('run-1',null,50,controller.signal),e=>e instanceof ApiError&&e.status===401);assert.equal(denied,true);
   }finally{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}
 });
+
+test('answer streams send the cursor both ways and refuse non-SSE responses, redirects and bad addresses',async()=>{
+  let status=200,type='text/event-stream; charset=utf-8',denied=false,calls=0,lastEventId:string|undefined,url='';
+  const server=createServer((req,res)=>{
+    calls++;url=req.url??'';assert.equal(req.method,'GET');assert.equal(req.headers.authorization,'Bearer allowed');assert.equal(req.headers.accept,'text/event-stream');
+    lastEventId=req.headers['last-event-id'] as string|undefined;
+    res.writeHead(status,{'content-type':type,location:'/unexpected'});res.end(': keep-alive\n\n');
+  });
+  await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
+  const address=server.address();if(!address||typeof address==='string')throw Error('missing address');
+  const client=createApiClient('allowed',()=>{denied=true;},`http://127.0.0.1:${address.port}`);
+  const controller=new AbortController();
+  try{
+    const stream=await client.answerStream('run-1','find',3,controller.signal);
+    assert.equal(await new Response(stream).text(),': keep-alive\n\n');
+    assert.equal(url,'/v1/agent-runs/run-1/steps/find/text/stream?after=3');assert.equal(lastEventId,'3');
+    await client.answerStream('run-1','find',0,controller.signal);
+    assert.equal(url,'/v1/agent-runs/run-1/steps/find/text/stream');assert.equal(lastEventId,undefined);
+    for(const bad of ['../secret','..','with/slash'])await assert.rejects(client.answerStream(bad,'find',0,controller.signal));
+    await assert.rejects(client.answerStream('run-1','../x',0,controller.signal));
+    await assert.rejects(client.answerStream('run-1','find',-1,controller.signal),/cursor/i);
+    assert.equal(calls,2);
+    type='application/json';await assert.rejects(client.answerStream('run-1','find',0,controller.signal),/stream/i);
+    type='text/event-stream';status=302;await assert.rejects(client.answerStream('run-1','find',0,controller.signal));
+    status=401;await assert.rejects(client.answerStream('run-1','find',0,controller.signal),e=>e instanceof ApiError&&e.status===401);assert.equal(denied,true);
+  }finally{server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}
+});

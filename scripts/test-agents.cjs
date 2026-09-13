@@ -6,7 +6,7 @@ const engines=require(process.env.SCONE_PLAYWRIGHT_MODULE||'playwright');
 const contract=require('../tests/fixtures/http-capabilities.json');let browser;
 before(async()=>{browser=await engines[process.env.SCONE_BROWSER_ENGINE||'chromium'].launch({headless:true,executablePath:process.env.SCONE_BROWSER_PATH});});
 after(async()=>{await browser?.close();});
-async function fixture(t,{mobile=false,supported=true,paged=false,runs=false,maxParallel=1,handoffs=false,history=false}={}){
+async function fixture(t,{mobile=false,supported=true,paged=false,runs=false,maxParallel=1,handoffs=false,history=false,answers=false}={}){
  const html=fs.readFileSync(path.resolve(__dirname,'../dist/console.html'),'utf8').replaceAll('__SCONE_TOKEN__','agent-fixture');
  const state={handoffCapability:handoffs,saved:null,forged:false,hold:null,pageStarted:false,conflict:false,runs:new Map(),starts:0,cancels:0,complete:true,loseStart:false,forgeResult:false,substitute:false,forgeTarget:false,forgeFinal:false};
  const server=http.createServer(async(req,res)=>{
@@ -16,7 +16,7 @@ async function fixture(t,{mobile=false,supported=true,paged=false,runs=false,max
   assert.equal(req.headers.authorization,'Bearer agent-fixture');res.setHeader('content-type','application/json');
   const send=value=>res.end(JSON.stringify(value));
   if(url.pathname==='/v1/status')return send({space:'alpha',episodes:0});
-  if(url.pathname==='/v1/capabilities')return send({...contract.python,features:{...contract.python.features,'agents.handoffs':state.handoffCapability,'agents.catalog':supported,'agents.plans':supported,'agents.runs':runs,'agents.parallel':runs&&maxParallel>1,'agents.history':history}});
+  if(url.pathname==='/v1/capabilities')return send({...contract.python,features:{...contract.python.features,'agents.handoffs':state.handoffCapability,'agents.catalog':supported,'agents.plans':supported,'agents.runs':runs,'agents.parallel':runs&&maxParallel>1,'agents.history':history,'agents.text_stream':answers}});
   if(url.pathname==='/v1/agents/run-policy')return send({space:'alpha',max_parallel_tasks:maxParallel,max_active_runs:4});
   if(url.pathname==='/v1/agents/catalog')return send({agents:(handoffs?['research','write']:['research']).map(agent_id=>({agent_id,default_model:'fast',models:[{model_id:'fast',label:'Fast local',revision:'1'},{model_id:'careful',label:'Careful local',revision:'1'}]}))});
   if(url.pathname==='/v1/agent-plans'){
@@ -35,6 +35,19 @@ async function fixture(t,{mobile=false,supported=true,paged=false,runs=false,max
   if(runs&&url.pathname.startsWith('/v1/agent-runs/')){
    const parts=url.pathname.split('/'),run=state.runs.get(decodeURIComponent(parts[3]));if(!run){res.writeHead(404);return send({error:'missing'});}
    if(parts[4]==='request')return send(run.original);
+   if(parts[4]==='steps'&&parts[6]==='text'&&parts[7]==='stream'){
+    // The answer a running step is writing: two pieces, then a terminal
+    // once the run has a receipt. A step that does not exist is 404.
+    state.answerStreams=(state.answerStreams??0)+1;state.answerAfter=url.searchParams.get('after');
+    if(parts[5]!=='task-1'){res.writeHead(404);return send({error:'step_not_found',code:'step_not_found'});}
+    res.writeHead(200,{'content-type':'text/event-stream','cache-control':'no-store'});
+    const after=parseInt(state.answerAfter??'0',10);
+    const pieces=[[1,'Answer from '],[2,'the model.']];
+    for(const [sequence,text] of pieces)if(sequence>after)res.write('event: text\nid: '+sequence+'\ndata: '+JSON.stringify({sequence,text})+'\n\n');
+    if(state.withdraw)res.write('event: withdraw\nid: 3\ndata: {"sequence":3}\n\n');
+    const finish=()=>{if(state.complete)res.end('event: terminal\ndata: {"status":"completed","read_receipt":true}\n\n');else{state.answerOpen=res;}};
+    return finish();
+   }
    if(parts[4]==='history'){
     // Execution metadata for the run: three recorded positions, and a
     // fourth that only the live stream delivers. Never any text.
@@ -171,6 +184,33 @@ for(const mobile of [false,true])test(`the run timeline shows recorded execution
  await timeline.getByText('Observation finished',{exact:true}).waitFor();await timeline.getByText(/collector recorded no more events/).waitFor();
  assert.equal(await timeline.locator('li').count(),4);assert.equal(state.streams,1);assert.match(state.streamAfter,/^0{32}\.0{15}3\./,'the stream resumed from the last recorded position');
  assert.equal(await page.getByText('a private prompt').count(),0);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+});
+for(const mobile of [false,true])test(`the answer a running step is writing appears as it arrives and yields to the verified result, mobile=${mobile}`,async t=>{
+ const {page,state}=await fixture(t,{runs:true,answers:true,mobile});state.complete=false;await fill(page);await save(page);await page.getByText('Saved revision 1.',{exact:true}).waitFor();
+ await page.getByLabel('Question',{exact:true}).fill('Write me an answer');const id=await page.getByLabel('Run identifier',{exact:true}).inputValue();await page.getByRole('button',{name:'Start run',exact:true}).click();
+ const pane=page.getByRole('region',{name:'Answer being written for task-1',exact:true});await pane.waitFor();
+ await pane.getByLabel('Provisional answer text for task-1',{exact:true}).waitFor();
+ assert.equal(await pane.getByLabel('Provisional answer text for task-1',{exact:true}).innerText(),'Answer from the model.');
+ await pane.getByText('Provisional, not the verified result',{exact:true}).waitFor();
+ assert.equal(await page.getByLabel('Verified run results').count(),0,'provisional text is not a result');
+ const run=state.runs.get(id);run.status={...run.status,status:'completed',active_local:false,completed_steps:['task-1'],inflight:null,inflight_steps:[]};state.complete=true;
+ if(state.answerOpen)state.answerOpen.end('event: terminal\ndata: {"status":"completed","read_receipt":true}\n\n');
+ await page.getByLabel('Verified run results').waitFor();
+ assert.equal(await page.getByRole('region',{name:'Answer being written for task-1',exact:true}).count(),0,'the verified result replaces the provisional pane');
+ assert.equal(state.answerStreams,1);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+});
+test('withdrawn provisional text is cleared and said',async t=>{
+ const {page,state}=await fixture(t,{runs:true,answers:true});state.complete=false;state.withdraw=true;await fill(page);await save(page);await page.getByText('Saved revision 1.',{exact:true}).waitFor();
+ await page.getByLabel('Question',{exact:true}).fill('Write me an answer');await page.getByRole('button',{name:'Start run',exact:true}).click();
+ const pane=page.getByRole('region',{name:'Answer being written for task-1',exact:true});await pane.waitFor();
+ await pane.getByText(/withdrawn; it was not the answer/).waitFor();
+ assert.equal(await pane.getByLabel('Provisional answer text for task-1',{exact:true}).count(),0);
+});
+test('without the text stream capability no provisional answer is offered',async t=>{
+ const {page,state}=await fixture(t,{runs:true});state.complete=false;await fill(page);await save(page);await page.getByText('Saved revision 1.',{exact:true}).waitFor();
+ await page.getByLabel('Question',{exact:true}).fill('No live answer');await page.getByRole('button',{name:'Start run',exact:true}).click();
+ await page.getByRole('button',{name:'Cancel run',exact:true}).waitFor();
+ assert.equal(await page.getByRole('region',{name:/Answer being written/}).count(),0);assert.equal(state.answerStreams,undefined);
 });
 test('a history entry carrying anything beyond metadata is withheld, not shown',async t=>{
  const {page,state}=await fixture(t,{runs:true,history:true});state.leak=true;await fill(page);await save(page);await page.getByText('Saved revision 1.',{exact:true}).waitFor();

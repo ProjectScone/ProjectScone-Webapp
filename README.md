@@ -491,6 +491,15 @@ windows without a new event, when the run is no longer active, or when the
 collector records that observation finished. Nothing in the timeline restarts
 a run or calls a model.
 
+When the host advertises `agents.text_stream`, each step a run is working on
+shows a **Live answer** pane while it runs: the answer as the model writes it,
+labelled provisional, never the verified result. Text written before a tool
+call is withdrawn and the pane says so; a reader that fell behind the host's
+window is told what is missing rather than shown a spliced passage; when the
+run has a receipt the pane yields to the verified result, which decides the
+outcome. The pane reconnects from its last sequence on request, and never
+restarts a run.
+
 Run `node --test scripts/test-agents.cjs` with the same Playwright environment
 variables used above. It verifies packaged desktop/mobile editing, persistence,
 forged save receipts, conflict/draft handling, delayed paging and capability gates.
