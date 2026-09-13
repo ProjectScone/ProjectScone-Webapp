@@ -594,3 +594,16 @@ the source discards the pending result. Reloading does not replay inference. The
 browser rechecks source evidence before and after the response; a removed or
 changed source refuses the interpretation. Cancellation stops display and browser
 transport, but cannot guarantee the provider stops work already received.
+
+When the connected server advertises `agents.usage`, completed workflow results
+show **Reported token usage** for each model task or handoff hop. Prompt,
+completion, and total counts each include their reporting coverage; missing
+reports display **Unknown**, and historical tasks without telemetry say that it
+was not recorded. Saved results keep their original counts across restart and
+repeated reads. Human replies have no model usage, and a final handoff is shown
+once with its hop.
+
+This view requires the native workflow usage contract and explicitly requests
+`include_usage=true`. Older servers retain the existing result view. The counts
+are provider reports for completed tasks, not billing totals or quality scores;
+failed and interrupted attempts can consume tokens outside these receipts.

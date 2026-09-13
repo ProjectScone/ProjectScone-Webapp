@@ -1,3 +1,4 @@
+import {UsageDetails} from './UsageDetails';
 import {useEffect,useRef,useState} from 'react';
 import {ApiError,type ApiClient} from '../api';
 import {isHandoffPlan,isInputTask,isInteractivePlan,type SavedPlan} from './plans';
@@ -14,7 +15,7 @@ function message(error:unknown):string{
  }
  return error instanceof Error?error.message:'The run response is unavailable.';
 }
-function RunView({api,space,id,expected,onChanged,inputsAvailable}:{api:ApiClient;space:string;id:string;expected?:RunSubmission;onChanged:()=>void;inputsAvailable:boolean}){
+function RunView({api,space,id,expected,onChanged,inputsAvailable,usageAvailable}:{api:ApiClient;space:string;id:string;expected?:RunSubmission;onChanged:()=>void;inputsAvailable:boolean;usageAvailable:boolean}){
  const [version,setVersion]=useState(0),[request,setRequest]=useState<RunRequest|null>(null),[status,setStatus]=useState<RunStatus|null>(null),[result,setResult]=useState<RunResult|null>(null),[issue,setIssue]=useState(''),[busy,setBusy]=useState(false),[cancelling,setCancelling]=useState(false);
  const [inputs,setInputs]=useState<RunInput[]>([]);
  const active=useRef<AbortController|null>(null);
@@ -34,7 +35,7 @@ function RunView({api,space,id,expected,onChanged,inputsAvailable}:{api:ApiClien
      if(isInteractivePlan(original.plan)&&inputsAvailable){const prompts=parseInputPage(await api.request<unknown>(runAddress(id)+'/inputs',options()),original);if(controller.signal.aborted)return;verifiedInputs=prompts;setInputs(prompts);}
      terminal=!progress.active_local&&(progress.status!=='running'||progress.outcome_unknown);
      if(!progress.active_local&&['completed','verification_unavailable'].includes(progress.status)){
-      const verified=parseRunResult(await api.request<unknown>(runAddress(id)+'/result',options()),original);
+      const verified=parseRunResult(await api.request<unknown>(runAddress(id)+'/result'+(usageAvailable?'?include_usage=true':''),options()),original,usageAvailable);
       if(isInteractivePlan(original.plan)){if(!inputsAvailable)throw Error('This server does not support human input workflows.');matchInputResults(verified,verifiedInputs);}
       if(!controller.signal.aborted)setResult(verified);
      }else if((progress.active_local||progress.status==='running')&&!progress.outcome_unknown){
@@ -47,7 +48,7 @@ function RunView({api,space,id,expected,onChanged,inputsAvailable}:{api:ApiClien
    await poll();
   })().catch(error=>{if(!controller.signal.aborted){setIssue(message(error));setBusy(false);}});
   return()=>{controller.abort();if(timer)clearTimeout(timer);};
- },[api,space,id,version,expected,inputsAvailable]);
+ },[api,space,id,version,expected,inputsAvailable,usageAvailable]);
  const canCancel=!!status&&(status.active_local||(!status.outcome_unknown&&['awaiting_input','registered','created'].includes(status.status)));
  const cancel=async()=>{
   if(cancelling||!canCancel)return;
@@ -67,7 +68,7 @@ function RunView({api,space,id,expected,onChanged,inputsAvailable}:{api:ApiClien
   {request&&<details open><summary>Original request · {request.plan.workflow_id} · Revision {request.revision} · {isHandoffPlan(request.plan)?`Up to ${request.plan.max_handoffs} handoffs`:`Up to ${request.max_parallel} simultaneous tasks`}</summary><p className="agent-output">{request.question}</p>{isHandoffPlan(request.plan)?<><p>Starting agent: {request.plan.root_agent}</p><ul>{request.plan.agents.map(agent=><li key={agent.agent_id}>{agent.agent_id} · {agent.model_id} · {agent.can_handoff_to.length?`May hand off to ${agent.can_handoff_to.join(', ')}`:'Must finish without handing off'}</li>)}</ul></>:<ul>{request.plan.tasks.map(task=><li key={task.task_id}>{task.task_id}: {isInputTask(task)?'Human input':`${task.agent_id} · ${task.model_id}`}{task.depends_on.length?` · Receives ${task.depends_on.join(', ')}`:''}</li>)}</ul>}</details>}
   {request&&status&&inputsAvailable&&inputs.length>0&&<InputPanel api={api} request={request} status={status} items={inputs} onChanged={()=>{setVersion(n=>n+1);onChanged();}}/>}
   {result?.outcome==='handoff_limit'&&<p className="agent-notice" role="status">The handoff limit was reached. These are partial results; no final answer was produced.</p>}
-  {result&&<div aria-label="Verified run results">{result.tasks.map(output=>output.kind==='human_input'?<article key={output.task_id}><h4>{output.task_id} · Human input</h4><p>Reply used by this workflow</p><div className="agent-output">{output.text}</div></article>:<article key={output.task_id}><h4>{output.task_id} · {output.agent_id} · {output.model_id}{result.finalTask===output.task_id?' · Final answer':''}</h4>{output.handoff_to!==undefined&&<p>{output.handoff_to===null?'Agent finished':`Handed off to ${output.handoff_to}`}</p>}<p>{output.source_status==='retained'?`${output.evidence_ids.length} retained evidence references`:'No retained evidence · Treat this as ungrounded model output'} · {output.model_calls} model calls · {output.tool_calls} tool calls</p><div className="agent-output">{output.text}</div></article>)}</div>}
+  {result&&<div aria-label="Verified run results">{result.tasks.map(output=>output.kind==='human_input'?<article key={output.task_id}><h4>{output.task_id} · Human input</h4><p>Reply used by this workflow</p><div className="agent-output">{output.text}</div></article>:<article key={output.task_id}><h4>{output.task_id} · {output.agent_id} · {output.model_id}{result.finalTask===output.task_id?' · Final answer':''}</h4>{output.handoff_to!==undefined&&<p>{output.handoff_to===null?'Agent finished':`Handed off to ${output.handoff_to}`}</p>}<p>{output.source_status==='retained'?`${output.evidence_ids.length} retained evidence references`:'No retained evidence · Treat this as ungrounded model output'} · {output.model_calls} model calls · {output.tool_calls} tool calls</p>{result.reusedTasks?.includes(output.task_id)&&<p>Saved task result reused</p>}{output.usage!==undefined&&<UsageDetails usage={output.usage}/>}<div className="agent-output">{output.text}</div></article>)}</div>}
   {issue&&<p role="alert" className="agent-notice">{issue}</p>}
  </section>;
 }
@@ -85,7 +86,7 @@ function RunHistory({api,space,version,onSelect}:{api:ApiClient;space:string;ver
  useEffect(()=>{const controller=new AbortController();active.current=controller;setItems([]);setAfter(null);void load(controller,null);return()=>controller.abort();},[api,space,version]);
  return <section aria-label="Run history"><h3>Run history in {space}</h3><ul className="agent-run-list">{items.map(run=><li key={run.run_id}><button onClick={()=>onSelect(run.run_id)}>{run.run_id} · {run.workflow_id}<small>{run.status} · Revision {run.plan_revision}</small></button></li>)}</ul>{!busy&&!items.length&&!issue&&<p>No runs saved yet.</p>}{busy&&<p role="status">Loading runs…</p>}{after&&<button disabled={busy} onClick={()=>{if(active.current)void load(active.current,after);}}>Load more runs</button>}{issue&&<p role="alert">{issue}</p>}</section>;
 }
-export function RunPanel({api,space,plan,dirty,maxParallel,handoffsAvailable,inputsAvailable}:{api:ApiClient;space:string;plan:SavedPlan|null;dirty:boolean;maxParallel:number;handoffsAvailable:boolean;inputsAvailable:boolean}){
+export function RunPanel({api,space,plan,dirty,maxParallel,handoffsAvailable,inputsAvailable,usageAvailable}:{api:ApiClient;space:string;plan:SavedPlan|null;dirty:boolean;maxParallel:number;handoffsAvailable:boolean;inputsAvailable:boolean;usageAvailable:boolean}){
  const [runId,setRunId]=useState<string>(()=>crypto.randomUUID()),[parallel,setParallel]=useState(1),[question,setQuestion]=useState(''),[busy,setBusy]=useState(false),[attempted,setAttempted]=useState(false),[issue,setIssue]=useState(''),[submitted,setSubmitted]=useState<RunSubmission|null>(null),[selected,setSelected]=useState<{id:string;version:number;expected?:RunSubmission}|null>(null),[history,setHistory]=useState(0),[lookup,setLookup]=useState('');
  const active=useRef<AbortController|null>(null);
  const supported=!plan||(isInteractivePlan(plan.plan)?inputsAvailable:!isHandoffPlan(plan.plan)||handoffsAvailable);
@@ -108,7 +109,7 @@ export function RunPanel({api,space,plan,dirty,maxParallel,handoffsAvailable,inp
   {attempted&&<div className="agent-actions"><button disabled={busy} onClick={()=>inspect(runId)}>Check submitted run</button><button disabled={busy} onClick={()=>{setRunId(crypto.randomUUID());setAttempted(false);setIssue('');}}>Prepare a new run</button><span>A new run calls the selected models again.</span></div>}
   {issue&&<p role="alert" className="agent-notice">{issue}</p>}
   <form className="agent-run-lookup" onSubmit={event=>{event.preventDefault();try{inspect(lookup);setIssue('');}catch(error){setIssue(message(error));}}}><label>Find run by identifier<input value={lookup} maxLength={128} required onChange={event=>setLookup(event.target.value)}/></label><button>Open run</button></form>
-  {selected&&<RunView key={`${selected.id}:${selected.version}`} api={api} space={space} id={selected.id} expected={selected.expected} inputsAvailable={inputsAvailable} onChanged={()=>setHistory(n=>n+1)}/>}
+  {selected&&<RunView key={`${selected.id}:${selected.version}`} api={api} space={space} id={selected.id} expected={selected.expected} inputsAvailable={inputsAvailable} usageAvailable={usageAvailable} onChanged={()=>setHistory(n=>n+1)}/>}
   <RunHistory api={api} space={space} version={history} onSelect={inspect}/>
  </section>;
 }

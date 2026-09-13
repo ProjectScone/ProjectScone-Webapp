@@ -24,7 +24,7 @@ for(const mobile of [false,true])test(`human replies survive process restart wit
  t.after(async()=>{await browser?.close();await stop();fs.rmSync(state,{recursive:true,force:true});});
  await start();browser=await engines[process.env.SCONE_BROWSER_ENGINE||'chromium'].launch({headless:true,executablePath:process.env.SCONE_BROWSER_PATH});
  const page=await browser.newPage({viewport:mobile?{width:390,height:844}:{width:1380,height:1000}});page.setDefaultTimeout(7000);
- const errors=[];page.on('pageerror',error=>errors.push(error.message));
+ const errors=[],resultRequests=[];page.on('pageerror',error=>errors.push(error.message));page.on('request',request=>{if(new URL(request.url()).pathname.endsWith('/result'))resultRequests.push(request.url());});
  await page.goto(base+'/agents');
  await page.getByLabel('Workflow identifier',{exact:true}).fill('interactive');
  await page.getByLabel('Task type',{exact:true}).selectOption('input');
@@ -58,6 +58,14 @@ for(const mobile of [false,true])test(`human replies survive process restart wit
  const completed=calls();assert.deepEqual(completed.map(call=>call.model),['fast','careful']);assert.match(JSON.stringify(completed[1].messages),/Take the northern route/);
  await view.getByRole('button',{name:'Check status',exact:true}).click();await page.getByText('careful completed the task.',{exact:true}).waitFor();assert.equal(calls().length,2);
  assert.equal(await page.getByRole('heading',{name:'task-1 · Human input',exact:true}).count(),1);
+ const careful=page.getByRole('heading',{name:'task-2 · worker · careful',exact:true}).locator('..');
+ const fast=page.getByRole('heading',{name:'task-3 · worker · fast',exact:true}).locator('..');
+ assert.equal(await careful.getByRole('cell',{name:'138',exact:true}).count(),1);
+ assert.equal(await fast.getByRole('cell',{name:'Unknown',exact:true}).count(),2);
+ assert.equal(await page.getByRole('table',{name:'Reported token usage'}).count(),2);
+ assert(resultRequests.length>0&&resultRequests.every(url=>new URL(url).searchParams.get('include_usage')==='true'));
+ assert.equal(calls().length,2);
+ if(process.env.SCONE_USAGE_SCREENSHOTS)await page.screenshot({path:path.join(process.env.SCONE_USAGE_SCREENSHOTS,`usage-${mobile?'mobile':'desktop'}.png`),fullPage:true});
  await page.getByRole('button',{name:/interactive.*Revision 1/}).first().click();
  await page.getByRole('button',{name:'Prepare a new run',exact:true}).count().then(async count=>{if(count)await page.getByRole('button',{name:'Prepare a new run',exact:true}).click();});
  await page.getByLabel('Run identifier',{exact:true}).fill('cancel-waiting');await page.getByLabel('Question',{exact:true}).fill('Another trip.');
