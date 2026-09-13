@@ -36,6 +36,7 @@ function FrameCatalogue(props:Props&{video:VideoCatalogue}){
  const index=selection?.video===video?selection.index:0,frame=video.frames[index];
  const empty=video.frames.filter(frame=>frame.empty).length;
  return <div><p>{video.frames.length} sampled frames · {empty} returned no text · requested every {video.intervalSeconds} seconds.</p>
+  {empty===video.frames.length&&<p>No text recognized in sampled frames. The original video and frame evidence are retained; this source has no searchable text.</p>}
   <p>Unsampled moments were not examined. Empty OCR does not establish that a frame contains no visible text. Audio was not transcribed in this extraction.</p>
   {!!video.unavailableRequests&&<p>{video.unavailableRequests} requested times had no retained frame.</p>}
   <label className="video-frame-picker">Sampled frame<select aria-label="Sampled video frame" value={index} onChange={event=>setSelection({video,index:Number(event.target.value)})}>

@@ -111,3 +111,14 @@ test('final catalogue binds space without requiring a space field on legacy epis
  },documentVideoFrame:async()=>{downloaded=true;return new Blob(['pixels']);}};
  await assert.rejects(prepareVideoFrame(api,f.source,7,'alpha',expected,0,new AbortController().signal),/space/);
 });
+
+
+test('all-empty sampled frames retain a catalogue with no fabricated source text',()=>{
+ const f=videoFixture();f.source.content='';f.catalogue.evidence.segments=[];
+ for(const frame of f.catalogue.evidence.video.frames)frame.empty=true;
+ const parsed=parseVideoCatalogue(f.catalogue,f.source,7,'alpha');
+ assert.equal(parsed.frames.length,2);assert.deepEqual(parsed.document.segments,[]);
+ assert.ok(parsed.frames.every(frame=>frame.text===''&&frame.regions.length===0));
+ f.catalogue.evidence.video.frames[0].empty=false;
+ assert.throws(()=>parseVideoCatalogue(f.catalogue,f.source,7,'alpha'));
+});

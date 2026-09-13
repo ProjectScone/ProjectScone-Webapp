@@ -32,3 +32,11 @@ test('retained jobs bind video choice to local submission and reject conflicting
  for(const value of [undefined,false,null,1,'true'])assert.throws(()=>parseDocumentJobRequest({...body,spec:{...spec,video_ocr:value}},job,submitted));
  assert.throws(()=>parseDocumentJobRequest({...body,spec:{...spec,pdf_ocr:{mode:'all_pages',reading_order:'provider'}}},job,submitted));
 });
+
+test('zero text receipt requires explicit video OCR and zero chunks',()=>{
+ const original={attachment_id:'a'.repeat(64),media_type:'video/mp4',bytes:100},manifest={attachment_id:'b'.repeat(64),media_type:'application/json',bytes:200};
+ const receipt={original,manifest,filename:'slides.mp4',format:'mp4',segments:0,added:{episode_id:1,deduplicated:false,chunks:0},video_ocr:true};
+ assert.equal(parseReceipt(receipt,original,'slides.mp4',undefined,true).segments,0);
+ for(const chunks of [undefined,null,-1,1,'0'])assert.throws(()=>parseReceipt({...receipt,added:{...receipt.added,chunks}},original,'slides.mp4',undefined,true));
+ assert.throws(()=>parseReceipt({...receipt,video_ocr:false},original,'slides.mp4'));
+});
