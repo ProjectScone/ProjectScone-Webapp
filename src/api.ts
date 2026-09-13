@@ -3,6 +3,7 @@ import {readVideoFrame,validateVideoFrameReference,type VideoFrameReference} fro
 import {exportAddress,readGraphExport,type GraphExportRequest,type GraphExportFile} from './memory/knowledge-export.ts';
 import {attachVoiceSocket,type VoiceEvents} from './conversations/voice/channel.ts';
 import {historyAddress,historyCursor} from './agents/history.ts';
+import {answerAddress} from './agents/answer-stream.ts';
 import {voiceSocketUrl} from './conversations/voice/wire.ts';
 
 export interface ApiClient {
@@ -16,6 +17,7 @@ export interface ApiClient {
   documentOriginal(original:ImageAttachment,signal?:AbortSignal):Promise<Blob>;
   conversationStream(sid: string, requestId: string, after: number, signal: AbortSignal): Promise<ReadableStream<Uint8Array>>;
   historyStream(runId:string,after:string|null,limit:number,signal:AbortSignal):Promise<ReadableStream<Uint8Array>>;
+  answerStream(runId:string,stepId:string,after:number,signal:AbortSignal):Promise<ReadableStream<Uint8Array>>;
   voiceConnection(sid:string,format:{sampleRate:number;channels:number},events:VoiceEvents,signal:AbortSignal):ReturnType<typeof attachVoiceSocket>;
 }
 
@@ -55,6 +57,23 @@ export function createApiClient(key: string, unauthorized: () => void, base = ''
       signal.throwIfAborted();
       const url=voiceSocketUrl(sid,base||window.location.origin);
       return attachVoiceSocket(new WebSocket(url),key,sid,format,events,signal);
+    },
+    async answerStream(runId,stepId,after,signal){
+      if(!Number.isSafeInteger(after)||after<0)throw Error('Invalid answer stream cursor');
+      const path=answerAddress(runId,stepId)+(after?'?after='+after:'');
+      const response=await fetch(base+path,{
+        method:'GET',headers:{Authorization:'Bearer '+key,Accept:'text/event-stream',...(after?{'Last-Event-ID':String(after)}:{})},signal,
+        cache:'no-store',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer',
+      });
+      if(!response.ok){
+        await response.body?.cancel();
+        if(response.status===401)unauthorized();
+        throw new ApiError(response.status,`Answer stream request failed (${response.status})`);
+      }
+      if(response.headers.get('content-type')?.split(';')[0].trim()!=='text/event-stream'||!response.body){
+        await response.body?.cancel();throw Error('Invalid answer stream response');
+      }
+      return response.body;
     },
     async historyStream(runId,after,limit,signal){
       if(after!==null)historyCursor(after);
