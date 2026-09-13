@@ -5,8 +5,9 @@ import {frameTimeLabel,type VideoCatalogue,type VideoFrame} from './document-vid
 import {prepareVideoFrame,readVideoCatalogue} from './document-video-read';
 export {VIDEO_FORMATS} from './document-video-import';
 import './document-video.css';
+import {VideoFrameUnderstanding} from './VideoFrameUnderstanding';
 
-type Props={api:ApiClient;source:DocumentSource;episodeId:number;space:string};
+type Props={api:ApiClient;source:DocumentSource;episodeId:number;space:string;understanding?:boolean};
 export function SourceDocumentVideo(props:Props){
  const {api,source,episodeId,space}=props;
  const context=useMemo(()=>({api,source,episodeId,space}),[api,source,episodeId,space]);
@@ -45,7 +46,7 @@ function FrameCatalogue(props:Props&{video:VideoCatalogue}){
   <FrameEvidence {...props} frame={frame}/>
  </div>;
 }
-function FrameEvidence({api,source,episodeId,space,video,frame}:Props&{video:VideoCatalogue;frame:VideoFrame}){
+function FrameEvidence({api,source,episodeId,space,video,frame,understanding}:Props&{video:VideoCatalogue;frame:VideoFrame}){
  const context=useMemo(()=>({api,source,episodeId,space,video,frame}),[api,source,episodeId,space,video,frame]);
  const [submitted,setSubmitted]=useState<{context:object}|null>(null);
  const [snapshot,setSnapshot]=useState<{request:object;url?:string;error?:string}|null>(null);
@@ -69,6 +70,7 @@ function FrameEvidence({api,source,episodeId,space,video,frame}:Props&{video:Vid
   {request&&!result&&<p role="status">Preparing and verifying frame pixels…</p>}{result?.error&&<p role="alert">{result.error}</p>}
   {result?.url&&<div className="video-frame-image"><img src={result.url} alt={`Verified video frame ${frame.ordinal} at ${frameTimeLabel(video,frame)}`} onError={()=>{if(request)setSnapshot({request,error:'The browser could not display this verified PNG. The retained text remains available.'});}}/>
    {box&&<span className="video-region-box" aria-hidden="true" style={{left:`${box[0]*100}%`,top:`${box[1]*100}%`,width:`${(box[2]-box[0])*100}%`,height:`${(box[3]-box[1])*100}%`}}/>}</div>}
+  {understanding&&result?.url&&<VideoFrameUnderstanding api={api} source={source} episodeId={episodeId} space={space} video={video} frame={frame}/>}
   {frame.empty?<p>No text was recognized in this sampled frame.</p>:<><p>{frame.regions.length} recognized regions · {frame.ocrEngine}. Select a region to highlight its recorded box.</p>
    <ol className="video-regions" start={regions.page*40+1}>{frame.regions.slice(regions.page*40,(regions.page+1)*40).map((region,index)=><li key={regions.page*40+index}><button className="btn quiet" aria-pressed={regions.index===regions.page*40+index} onClick={()=>setRegionSelection({context,page:regions.page,index:regions.page*40+index})}>{region.text}</button><small>UTF-8 bytes {region.start}–{region.end}{region.score===null?'':` · recognizer score ${region.score.toFixed(2)}`}</small></li>)}</ol>
    {frame.regions.length>40&&<nav aria-label="Video OCR region pages"><button className="btn quiet" disabled={!regions.page} onClick={()=>setRegionSelection({context,page:regions.page-1,index:null})}>Previous regions</button><span>Page {regions.page+1} of {Math.ceil(frame.regions.length/40)}</span><button className="btn quiet" disabled={(regions.page+1)*40>=frame.regions.length} onClick={()=>setRegionSelection({context,page:regions.page+1,index:null})}>Next regions</button></nav>}

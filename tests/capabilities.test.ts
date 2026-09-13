@@ -144,3 +144,10 @@ test('background document jobs require an explicit boolean capability',()=>{
  assert.equal(parseCapabilities({...fixtures.python,features:{...features,'documents.jobs':true}}).features['documents.jobs'],true);
  for(const value of ['true',1,null])assert.throws(()=>parseCapabilities({...fixtures.python,features:{...features,'documents.jobs':value}}));
 });
+
+test('video inference requires an explicit boolean independently of frame viewing',()=>{
+ const features={...fixtures.python.features};delete features['documents.video.understand'];
+ assert.equal(parseCapabilities({...fixtures.python,features}).features['documents.video.understand'],false);
+ assert.equal(parseCapabilities({...fixtures.python,features:{...features,'documents.video.understand':true}}).features['documents.video.understand'],true);
+ for(const value of ['true',1,null])assert.throws(()=>parseCapabilities({...fixtures.python,features:{...features,'documents.video.understand':value}}));
+});

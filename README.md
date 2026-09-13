@@ -577,5 +577,20 @@ these observations are not an atomic transaction across storage systems.
 
 This requires a native host supporting the version-one video catalogue and
 verified frame endpoint. Existing audio and document evidence remain available
-on older hosts. Video-only sources without recognized text and generated video
-interpretation are not implemented by this viewer.
+on older hosts. Hosts supporting visual-only video retention can keep the original
+and sampled evidence when OCR returns no text; the source then has no searchable
+text.
+
+On source pages, hosts advertising `documents.video.understand` also offer
+**Interpret this frame** after the selected PNG is checked. Choose an image-capable
+self-hosted model in **Models → Image understanding**, write a task, and explicitly
+submit it. Each request uses the current saved vision model. The displayed result
+names that model and frame and remains unsaved; it does not alter OCR evidence or
+make the source searchable by its visual meaning.
+
+The task limit is 16,000 Unicode codepoints, including emoji counted consistently
+with the API. Changing the task or frame, cancelling, clearing evidence or leaving
+the source discards the pending result. Reloading does not replay inference. The
+browser rechecks source evidence before and after the response; a removed or
+changed source refuses the interpretation. Cancellation stops display and browser
+transport, but cannot guarantee the provider stops work already received.
