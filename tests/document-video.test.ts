@@ -68,6 +68,7 @@ test('frame preparation rechecks source and space after downloading pixels',asyn
   const original=f.source.binding.original,manifest=f.source.binding.manifest;
   const source={episode_id:7,space:'alpha',kind:'file',content:changed?'Changed':f.source.content,
    metadata:{document_original:original.attachment_id,document_manifest:manifest.attachment_id,document_format:'mp4'},attachments:[original,manifest]};
+  if(path.endsWith('/catalogue')&&changed)throw Error('Source changed');
   return (path==='/v1/status'?{space:'alpha'}:path.endsWith('/catalogue')?f.catalogue:source) as T;
  },documentVideoFrame:async()=>{changed=true;return new Blob(['pixels']);}};
  await assert.rejects(prepareVideoFrame(api,f.source,7,'alpha',expected,0,new AbortController().signal),/changed/);
@@ -91,12 +92,22 @@ for(const operation of ['catalogue','frame'] as const)test(`${operation} refuses
  const f=videoFixture(),expected=parseVideoCatalogue(f.catalogue,f.source,7,'alpha'),{original,manifest}=f.source.binding;
  let statuses=0,gone=false;
  const api={request:async<T>(path:string):Promise<T>=>{
-  if(path==='/v1/status'){statuses++;if(statuses===(operation==='catalogue'?2:3))gone=true;return {space:'alpha'} as T;}
-  if(path.endsWith('/catalogue'))return f.catalogue as T;
+  if(path==='/v1/status'){statuses++;if(statuses===(operation==='catalogue'?1:2))gone=true;return {space:'alpha'} as T;}
   if(gone)throw Error('Source forgotten');
+  if(path.endsWith('/catalogue'))return f.catalogue as T;
   return {episode_id:7,space:'alpha',kind:'file',content:f.source.content,metadata:{document_original:original.attachment_id,document_manifest:manifest.attachment_id,document_format:'mp4'},attachments:[original,manifest]} as T;
  },documentVideoFrame:async()=>new Blob(['pixels'])};
  const signal=new AbortController().signal;
  await assert.rejects(operation==='catalogue'?readVideoCatalogue(api,f.source,7,'alpha',signal):prepareVideoFrame(api,f.source,7,'alpha',expected,0,signal),/forgotten/);
  assert.equal(gone,true);
+});
+
+test('final catalogue binds space without requiring a space field on legacy episode replies',async()=>{
+ const f=videoFixture(),expected=parseVideoCatalogue(f.catalogue,f.source,7,'alpha');let downloaded=false;
+ const api={request:async<T>(path:string):Promise<T>=>{
+  if(path==='/v1/status')return {space:'alpha'} as T;
+  assert.ok(path.endsWith('/catalogue'),'the final source check must use the space-bound catalogue');
+  return {...f.catalogue,space:downloaded?'beta':'alpha'} as T;
+ },documentVideoFrame:async()=>{downloaded=true;return new Blob(['pixels']);}};
+ await assert.rejects(prepareVideoFrame(api,f.source,7,'alpha',expected,0,new AbortController().signal),/space/);
 });

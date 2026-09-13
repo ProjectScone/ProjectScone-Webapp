@@ -74,7 +74,7 @@ export async function verifyDocumentImport(api:ImportApi,receipt:ImportReceipt,s
  if((evidence.parser==='video-frame-ocr')!==Boolean(receipt.videoOcr))throw Error('Saved extraction does not match the selected video mode.');
  if(evidence.filename!==receipt.filename||evidence.segments.length!==receipt.segments)throw Error('Saved extraction does not match this document receipt.');
  if(!samePdfOcr(evidence.pdfOcr,receipt.pdfOcr))throw Error('Saved extraction does not match the selected PDF OCR settings.');
- await verifyCurrentDocumentSource(api,source,receipt.episodeId,active,receipt.videoOcr?space:undefined);
+ if(!receipt.videoOcr)await verifyCurrentDocumentSource(api,source,receipt.episodeId,active);
  active.throwIfAborted();return {space,receipt,source,evidence};
 }
 export async function importDocument(api:ImportApi,file:File,catalog:DocumentFormats,signal:AbortSignal,phase:(phase:ImportPhase)=>void,pdfOcr?:PdfOcrSelection,videoOcr=false):Promise<ImportOutcome>{

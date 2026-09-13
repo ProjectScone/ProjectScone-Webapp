@@ -1,6 +1,5 @@
 import type {ApiClient} from '../api.ts';
 import type {DocumentSource} from './document-evidence.ts';
-import {verifyCurrentDocumentSource} from './document-evidence-read.ts';
 import {parseVideoCatalogue,type VideoCatalogue} from './document-video.ts';
 import {verifiedSpace} from './source-address.ts';
 
@@ -15,8 +14,7 @@ export async function readVideoCatalogue(api:Pick<ApiClient,'request'>,source:Do
  if(!Number.isSafeInteger(episodeId)||episodeId<1)throw Error('Invalid video source identity.');
  await checkSpace(api,space,signal);
  const result=parseVideoCatalogue(await api.request<unknown>(`/v1/episodes/${episodeId}/document/video/catalogue`,readOptions(signal)),source,episodeId,space);
- await checkSpace(api,space,signal);
- await verifyCurrentDocumentSource(api,source,episodeId,signal,space);signal.throwIfAborted();return result;
+ signal.throwIfAborted();return result;
 }
 export async function prepareVideoFrame(api:Pick<ApiClient,'request'|'documentVideoFrame'>,source:DocumentSource,episodeId:number,space:string,expected:VideoCatalogue,ordinal:number,signal:AbortSignal):Promise<Blob>{
  const current=await readVideoCatalogue(api,source,episodeId,space,signal);
@@ -24,6 +22,7 @@ export async function prepareVideoFrame(api:Pick<ApiClient,'request'|'documentVi
  const frame=current.frames.find(item=>item.ordinal===ordinal);
  if(!frame)throw Error('This frame was not retained in the sampling record.');
  const blob=await api.documentVideoFrame(episodeId,{...frame,timeBase:current.timeBase},signal);
- await checkSpace(api,space,signal);
- await verifyCurrentDocumentSource(api,source,episodeId,signal,space);signal.throwIfAborted();return blob;
+ const final=await readVideoCatalogue(api,source,episodeId,space,signal);
+ if(JSON.stringify(final)!==JSON.stringify(current))throw Error('Video evidence changed during frame preparation.');
+ signal.throwIfAborted();return blob;
 }

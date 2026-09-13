@@ -15,12 +15,12 @@ export async function readDocumentEvidence(api:Pick<ApiClient,'request'>,source:
  return data;
 }
 
-export async function verifyCurrentDocumentSource(api:Pick<ApiClient,'request'>,source:DocumentSource,episodeId:number,signal:AbortSignal,expectedSpace?:string):Promise<void>{
+export async function verifyCurrentDocumentSource(api:Pick<ApiClient,'request'>,source:DocumentSource,episodeId:number,signal:AbortSignal):Promise<void>{
  signal.throwIfAborted();
  const options={signal,cache:'no-store',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer'} as const;
  const current=await api.request<unknown>(`/v1/episodes/${episodeId}`,options);
  if(!current||typeof current!=='object'||Array.isArray(current))throw Error('The retained source is unavailable.');
  const record=current as Record<string,unknown>,binding=documentBinding(current);
- if(record.episode_id!==episodeId||(expectedSpace!==undefined&&record.space!==expectedSpace)||record.kind!=='file'||record.content!==source.content||!binding||JSON.stringify(binding)!==JSON.stringify(source.binding))throw Error('The retained source changed during evidence verification.');
+ if(record.episode_id!==episodeId||record.kind!=='file'||record.content!==source.content||!binding||JSON.stringify(binding)!==JSON.stringify(source.binding))throw Error('The retained source changed during evidence verification.');
  signal.throwIfAborted();
 }
