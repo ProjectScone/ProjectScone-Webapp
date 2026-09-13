@@ -1,6 +1,7 @@
 import type {ApiClient,ImageAttachment} from '../api.ts';
 import {parseReceipt,verifyDocumentImport,type VerifiedImport} from './document-import.ts';
 import {parsePdfOcrSelection,samePdfOcr,type PdfOcrSelection} from './document-ocr.ts';
+import {videoFilename,videoOcrChoice} from './document-video-import.ts';
 
 type JobApi=Pick<ApiClient,'request'>;
 const states=['registered','created','running','interrupted','cancelled','completed','failed','sources_invalid','verification_unavailable','deadline','outcome_unknown','retry_not_allowed','unavailable'] as const;
@@ -10,8 +11,8 @@ export interface DocumentJob {
  activeLocal:boolean;completedSteps:string[];inflight:string|null;outcomeUnknown:boolean;errorClass:string|null;
 }
 export interface DocumentJobPage {items:DocumentJob[];nextAfter:string|null;space:string}
-export interface DocumentJobRequest {pdfOcr?:PdfOcrSelection}
-export interface DocumentJobSubmission {space:string;filename:string;attachmentId:string;pdfOcr?:PdfOcrSelection}
+export interface DocumentJobRequest {pdfOcr?:PdfOcrSelection;videoOcr?:boolean}
+export interface DocumentJobSubmission {space:string;filename:string;attachmentId:string;pdfOcr?:PdfOcrSelection;videoOcr?:boolean}
 const bad=()=>Error('The server returned inconsistent document job details.');
 function record(value:unknown):Record<string,unknown>{if(!value||typeof value!=='object'||Array.isArray(value))throw bad();return value as Record<string,unknown>;}
 function text(value:unknown,max=1024):string{if(typeof value!=='string'||!value.length||value.length>max||value.includes('\0')||new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(new TextEncoder().encode(value))!==value)throw bad();return value;}
@@ -47,9 +48,11 @@ export function parseDocumentJobRequest(value:unknown,job:DocumentJob,submitted?
  if(raw.space!==job.space||raw.import_id!==job.id||spec.attachment_id!==job.attachmentId||spec.filename!==job.filename||spec.max_attempts!==job.maxAttempts)throw bad();
  identifier(spec.parser_revision);
  const pdfOcr=spec.pdf_ocr==null?undefined:parsePdfOcrSelection(spec.pdf_ocr);
+ const videoOcr=videoOcrChoice(spec.video_ocr);
+ if(videoOcr&&(!videoFilename(job.filename)||pdfOcr))throw bad();
  if(pdfOcr&&!job.filename.toLowerCase().endsWith('.pdf'))throw bad();
- if(submitted&&(submitted.space!==job.space||submitted.filename!==job.filename||submitted.attachmentId!==job.attachmentId||!samePdfOcr(pdfOcr,submitted.pdfOcr)))throw Error('The saved import does not match the submitted file and OCR choice.');
- return {pdfOcr};
+ if(submitted&&(submitted.space!==job.space||submitted.filename!==job.filename||submitted.attachmentId!==job.attachmentId||!samePdfOcr(pdfOcr,submitted.pdfOcr)||videoOcr!==videoOcrChoice(submitted.videoOcr)))throw Error('The saved import does not match the submitted file and OCR choice.');
+ return {pdfOcr,videoOcr};
 }
 export function canVerifyDocumentJob(job:DocumentJob):boolean{
  return !job.activeLocal&&['completed','verification_unavailable'].includes(job.status)&&job.completedSteps.length===2&&job.inflight===null;
@@ -76,6 +79,6 @@ export async function verifyDocumentJob(api:ApiClient,job:DocumentJob,signal:Abo
  if(raw.space!==job.space||raw.import_id!==job.id)throw bad();
  const attached=record(raw.original);
  const original:ImageAttachment={attachment_id:job.attachmentId,bytes:integer(attached.bytes,1,25*1024*1024),media_type:text(attached.media_type,256)};
- const receipt=parseReceipt(raw,original,job.filename,request.pdfOcr);
+ const receipt=parseReceipt(raw,original,job.filename,request.pdfOcr,request.videoOcr);
  return verifyDocumentImport(api,receipt,signal,job.space);
 }

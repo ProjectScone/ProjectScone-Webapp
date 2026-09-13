@@ -1,5 +1,7 @@
 import {displayFilename} from './filename-display';
 import {SourceDocumentMedia} from './SourceDocumentMedia';
+import {SourceDocumentVideo} from './SourceDocumentVideo';
+import {videoFilename} from './document-video-import';
 import {useEffect,useRef,useState} from 'react';
 import type {ApiClient} from '../api';
 import {DocumentOriginal} from './DocumentOriginal';
@@ -9,8 +11,8 @@ import {importDocument,parseDocumentFormats,validateDocumentSelection,verifyDocu
 import {ocrModeLabel,ocrOrderLabel,parsePdfOcrSelection,type PdfOcrSelection,type PdfOcrCatalog} from './document-ocr';
 import './document-import.css';
 
-type Row={id:number;file:File;pdfOcr?:PdfOcrSelection}&({status:'queued'|ImportPhase}|ImportOutcome);
-const rowBase=(row:Row)=>({id:row.id,file:row.file,pdfOcr:row.pdfOcr});
+type Row={id:number;file:File;pdfOcr?:PdfOcrSelection;videoOcr?:boolean}&({status:'queued'|ImportPhase}|ImportOutcome);
+const rowBase=(row:Row)=>({id:row.id,file:row.file,pdfOcr:row.pdfOcr,videoOcr:row.videoOcr});
 const phaseLabel:Record<Row['status'],string>={queued:'Ready',uploading:'Uploading original',indexing:'Extracting and indexing',verifying:'Verifying source',verified:'Verified',unverified:'Saved · verification needed',uncertain:'Save unconfirmed',failed:'Import failed'};
 const bytes=(size:number)=>size>=1048576?`${(size/1048576).toFixed(1)} MiB`:`${size.toLocaleString()} bytes`;
 const failure=(error:unknown)=>error instanceof Error?error.message:'The document request failed.';
@@ -22,13 +24,14 @@ export function DocumentImports({api,onSaved}:{api:ApiClient;onSaved:()=>void}){
 function ImportWorkspace({api,onSaved,close}:{api:ApiClient;onSaved:()=>void;close:()=>void}){
  const [catalog,setCatalog]=useState<DocumentFormats|null>(null),[discoveryError,setDiscoveryError]=useState(''),[attempt,setAttempt]=useState(0);
  const [rows,setRows]=useState<Row[]>([]),[error,setError]=useState(''),[busy,setBusy]=useState(false),[pausing,setPausing]=useState(false);
+ const [videoForNew,setVideoForNew]=useState(false);
  const liveRows=useRef<Row[]>([]),active=useRef(false),pause=useRef(false),nextId=useRef(1),lifetime=useRef(new AbortController());
  const savedCallback=useRef(onSaved);savedCallback.current=onSaved;
  const update=(next:Row[])=>{liveRows.current=next;setRows(next);};
  const patch=(id:number,value:Row)=>update(liveRows.current.map(row=>row.id===id?value:row));
  useEffect(()=>{
   const controller=new AbortController();lifetime.current=controller;
-  update([]);active.current=false;setBusy(false);setPausing(false);setError('');
+  update([]);active.current=false;setBusy(false);setPausing(false);setError('');setVideoForNew(false);
   return()=>controller.abort();
  },[api]);
  useEffect(()=>{
@@ -46,8 +49,8 @@ function ImportWorkspace({api,onSaved,close}:{api:ApiClient;onSaved:()=>void;clo
  const queued=rows.filter(row=>row.status==='queued').length,verified=rows.filter(row=>row.status==='verified').length;
  const choose=(files:FileList|null)=>{
   if(!files||!catalog||active.current)return;
-  const chosen=Array.from(files);
-  try{validateDocumentSelection([...liveRows.current.map(row=>row.file),...chosen],catalog);update([...liveRows.current,...chosen.map(file=>({id:nextId.current++,file,status:'queued' as const}))]);setError('');}
+  const chosen=Array.from(files).map(file=>({id:nextId.current++,file,videoOcr:videoForNew&&videoFilename(file.name),status:'queued' as const}));
+  try{const next=[...liveRows.current,...chosen];validateDocumentSelection(next.map(row=>row.file),catalog,next.map(row=>Boolean(row.videoOcr)));update(next);setError('');}
   catch(error){setError(failure(error));}
  };
  const run=async()=>{
@@ -56,7 +59,7 @@ function ImportWorkspace({api,onSaved,close}:{api:ApiClient;onSaved:()=>void;clo
   try{
    while(!pause.current&&!signal.aborted){
     const row=liveRows.current.find(row=>row.status==='queued');if(!row)break;
-    const result=await importDocument(api,row.file,catalog,signal,status=>{if(!signal.aborted)patch(row.id,{...rowBase(row),status});},row.pdfOcr);
+    const result=await importDocument(api,row.file,catalog,signal,status=>{if(!signal.aborted)patch(row.id,{...rowBase(row),status});},row.pdfOcr,row.videoOcr);
     if(signal.aborted)return;
     patch(row.id,{...rowBase(row),...result});
     if(result.status==='verified'||result.status==='unverified')savedCallback.current();
@@ -81,7 +84,8 @@ function ImportWorkspace({api,onSaved,close}:{api:ApiClient;onSaved:()=>void;clo
   {!catalog&&!discoveryError&&<p role="status">Checking supported formats…</p>}
   {discoveryError&&<div role="alert"><p>{discoveryError}</p><button className="btn quiet" onClick={()=>setAttempt(n=>n+1)}>Retry format discovery</button></div>}
   {catalog&&<>
-   <label className="import-picker">Choose documents<input type="file" multiple disabled={busy} accept={Array.from(catalog.formats).filter(([,format])=>format.available).map(([extension])=>extension).join(',')} onChange={event=>{choose(event.target.files);event.target.value='';}}/><small>Up to {bytes(catalog.maxInputBytes)} per file · 20 files / 100 MiB per queue</small></label>
+   {catalog.videoOcr?.available&&<VideoImportChoice value={videoForNew} disabled={busy} onChange={setVideoForNew}/>}
+   <label className="import-picker">Choose documents<input type="file" multiple disabled={busy} accept={documentAccept(catalog,videoForNew)} onChange={event=>{choose(event.target.files);event.target.value='';}}/><small>Up to {bytes(catalog.maxInputBytes)} per file · 20 files / 100 MiB per queue</small></label>
    <details className="import-formats"><summary>Supported formats and availability</summary><ul>{Array.from(catalog.formats,([extension,format])=><li key={extension}><strong>{extension}</strong><span>{format.available?'Available':'Unavailable on this server'}{format.requires?` · ${format.requires}`:''}</span></li>)}</ul><p>Availability checks installed parsers. A damaged, encrypted, or unsupported file variant can still fail extraction.</p></details>
   </>}
   {error&&<p role="alert" className="err">{error}</p>}
@@ -90,6 +94,8 @@ function ImportWorkspace({api,onSaved,close}:{api:ApiClient;onSaved:()=>void;clo
    <ol className="import-list">{rows.map(row=><li key={row.id} className={'import-row import-'+row.status}>
     <div className="import-row-heading"><div><strong>{displayFilename(row.file.name)}</strong><small>{bytes(row.file.size)}</small></div><span role="status" className="import-state">{phaseLabel[row.status]}</span></div>
     {row.file.name.toLowerCase().endsWith('.pdf')&&row.status==='queued'&&catalog?.pdfOcr?.available&&<PdfOcrControls filename={row.file.name} catalog={catalog.pdfOcr} value={row.pdfOcr} disabled={busy} onChange={pdfOcr=>{if(!active.current)patch(row.id,{...row,pdfOcr});}}/>}
+    {videoFilename(row.file.name)&&row.status==='queued'&&catalog?.videoOcr?.available&&<VideoImportChoice label={`Video extraction for ${displayFilename(row.file.name)}`} value={Boolean(row.videoOcr)} disabled={busy} onChange={videoOcr=>{if(!active.current)patch(row.id,{...row,videoOcr});}}/>}
+    {row.videoOcr&&row.status!=='queued'&&<p>Visible text from sampled video frames · audio excluded</p>}
     {row.pdfOcr&&row.status!=='queued'&&row.status!=='verified'&&<p>{ocrModeLabel(row.pdfOcr.mode)} · {ocrOrderLabel(row.pdfOcr.reading_order)}</p>}
     {'error' in row&&<p role="alert">{row.error}</p>}
     {row.status==='failed'&&<><p>Indexing was not started or permission was denied. An uploaded original may remain stored. Retry only after resolving the failure.</p><button className="btn quiet small" disabled={busy} onClick={()=>patch(row.id,{...rowBase(row),status:'queued'})}>Queue retry</button></>}
@@ -105,12 +111,24 @@ export function ImportEvidence({api,value}:{api:ApiClient;value:VerifiedImport})
  const [page,setPage]=useState(0),{receipt,source,evidence}=value;
  return <div className="import-evidence"><p>Source #{receipt.episodeId} · {receipt.segments} extracted {receipt.segments===1?'segment':'segments'} · {receipt.format}{receipt.deduplicated?' · Existing source reused':''}</p>
   {evidence.pdfOcr&&<p>{ocrModeLabel(evidence.pdfOcr.mode)} · {ocrOrderLabel(evidence.pdfOcr.reading_order)} · {evidence.pdfOcr.dpi} DPI. Settings match the retained extraction.</p>}
+  {receipt.videoOcr&&<p>Visible text from sampled video frames. The retained extraction matches your selection; audio was not transcribed.</p>}
   <SourcePageLink api={api} episodeId={receipt.episodeId}/>
   <details><summary>Inspect extracted source</summary><p>{displayFilename(evidence.filename)} · {evidence.parser}. Original identity and extracted text match the saved source.</p><ul>{evidence.segments.slice(page*20,(page+1)*20).map((segment,index)=><li key={page*20+index}><strong>{segment.locator}</strong>{segment.extraction==='ocr'&&<small>OCR{segment.ocrEngine?` · ${segment.ocrEngine}`:''}</small>}{segment.extraction==='text_layer'&&<small>Embedded text</small>}<pre>{segment.text}</pre></li>)}</ul>{evidence.segments.length>20&&<nav aria-label="Extracted segment pages"><button className="btn quiet small" disabled={!page} onClick={()=>setPage(page-1)}>Previous segments</button><span>Page {page+1} of {Math.ceil(evidence.segments.length/20)}</span><button className="btn quiet small" disabled={(page+1)*20>=evidence.segments.length} onClick={()=>setPage(page+1)}>Next segments</button></nav>}<p className="import-digest">Original SHA-256: {receipt.original.attachment_id}</p></details>
   <details><summary>Download original file</summary><DocumentOriginal api={api} source={source} episodeId={receipt.episodeId}/></details>
   {evidence.media&&<SourceDocumentMedia api={api} source={source} episodeId={receipt.episodeId} space={value.space}/>}
+  {evidence.parser==='video-frame-ocr'&&<SourceDocumentVideo api={api} source={source} episodeId={receipt.episodeId} space={value.space}/>}
   {evidence.tables.length>0&&<SourceDocumentEvidence api={api} episodeId={receipt.episodeId} source={source} space={value.space}/>}
  </div>;
+}
+
+export function documentAccept(catalog:DocumentFormats,videoOcr:boolean):string{
+ return [...new Set([...Array.from(catalog.formats).filter(([,format])=>format.available).map(([extension])=>extension),
+  ...(videoOcr&&catalog.videoOcr?.available?catalog.videoOcr.extensions:[])])].join(',');
+}
+export function VideoImportChoice({label='Video extraction for new files',value,disabled,onChange}:{label?:string;value:boolean;disabled:boolean;onChange:(value:boolean)=>void}){
+ return <div className="import-ocr-controls"><label>{label}<select aria-label={label} value={value?'frames':'speech'} disabled={disabled} onChange={event=>onChange(event.target.value==='frames')}>
+  <option value="speech">Speech transcription (when available)</option><option value="frames">Visible text in sampled frames</option>
+ </select></label><p>Frame OCR extracts visible text from sampled images and excludes audio. Choose speech separately to retain spoken content. Other document formats keep their own extraction settings.</p></div>;
 }
 
 export function PdfOcrControls({filename,catalog,value,disabled,onChange}:{filename:string;catalog:PdfOcrCatalog;value?:PdfOcrSelection;disabled:boolean;onChange:(value:PdfOcrSelection|undefined)=>void}){
