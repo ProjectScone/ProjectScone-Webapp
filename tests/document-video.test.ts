@@ -122,3 +122,32 @@ test('all-empty sampled frames retain a catalogue with no fabricated source text
  f.catalogue.evidence.video.frames[0].empty=false;
  assert.throws(()=>parseVideoCatalogue(f.catalogue,f.source,7,'alpha'));
 });
+
+test('one sampled frame may carry the native 20000-region allowance',()=>{
+ const f=videoFixture(),segment=f.catalogue.evidence.segments[0];
+ segment.text=Array.from({length:10001},()=> 'x').join('\n');f.source.content=segment.text;
+ segment.regions=Array.from({length:10001},(_,i)=>({...segment.regions[0],text:'x',start:i*2,end:i*2+1}));
+ assert.equal(parseVideoCatalogue(f.catalogue,f.source,7,'alpha').frames[0].regions.length,10001);
+});
+test('OCR regions must account for nonwhitespace text between and after boxes',()=>{
+ for(const [content,start,end] of [['prefix Café',7,12],['Café suffix',0,5]] as const){
+  const f=videoFixture(),segment=f.catalogue.evidence.segments[0];
+  segment.text=content;f.source.content=content;segment.regions[0].start=start;segment.regions[0].end=end;
+  assert.throws(()=>parseVideoCatalogue(f.catalogue,f.source,7,'alpha'));
+ }
+});
+test('video OCR metadata uses native Unicode character limits',()=>{
+ const f=videoFixture(),v=f.catalogue.evidence.video;
+ v.frames[0].ocr_engine='😀'.repeat(96);f.catalogue.evidence.segments[0].metadata.engine=v.frames[0].ocr_engine;
+ v.policy_revision='😀'.repeat(96);
+ assert.equal(parseVideoCatalogue(f.catalogue,f.source,7,'alpha').frames[0].ocrEngine,v.frames[0].ocr_engine);
+});
+test('native supplementary-character filenames fit the catalogue character limit',()=>{
+ const f=videoFixture();f.catalogue.evidence.filename='😀'.repeat(512)+'.mp4';
+ assert.equal(parseVideoCatalogue(f.catalogue,f.source,7,'alpha').document.filename,f.catalogue.evidence.filename);
+});
+test('a native-valid OCR region counts Unicode characters rather than UTF16 units',()=>{
+ const f=videoFixture(),label='😀'.repeat(50001),segment=f.catalogue.evidence.segments[0];
+ segment.text=label;f.source.content=label;segment.regions[0].text=label;segment.regions[0].end=new TextEncoder().encode(label).length;
+ assert.equal(parseVideoCatalogue(f.catalogue,f.source,7,'alpha').frames[0].regions[0].text,label);
+});

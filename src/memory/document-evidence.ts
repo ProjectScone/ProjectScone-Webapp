@@ -20,6 +20,9 @@ function record(value:unknown):Record<string,unknown>{if(!value||typeof value!==
 function text(value:unknown,max=4096,empty=false):string {
  if(typeof value!=='string'||value.length>max||(!empty&&!value.length)||decoder.decode(encoder.encode(value))!==value)throw Error('Invalid document evidence text');return value;
 }
+function filename(value:unknown):string{
+ const result=text(value,2048);if(Array.from(result).length>1024)throw Error('Document filename exceeds its character limit');return result;
+}
 function count(value:unknown,max:number,min=0):number{if(typeof value!=='number'||!Number.isSafeInteger(value)||value<min||value>max)throw Error('Invalid document evidence count');return value;}
 function list(value:unknown,max:number):unknown[]{if(!Array.isArray(value)||value.length>max)throw Error('Document evidence exceeds its list limit');return value;}
 function attachment(value:unknown):DocumentAttachment {
@@ -38,7 +41,7 @@ function references(value:unknown,allowed:string[]):CellReference[]{return list(
 export function parseDocumentEvidence(value:unknown,source:DocumentSource):DocumentEvidence {
  const v=record(value);sameAttachment(v.original,source.binding.original);sameAttachment(v.manifest,source.binding.manifest);
  const format=text(v.format,64);if(format!==source.binding.format)throw Error('Document format does not match this source');
- const filename=text(v.filename,1024),parser=text(v.parser,128),segments:EvidenceSegment[]=[],cells=new Map<string,DocumentCell>();
+ const documentFilename=filename(v.filename),parser=text(v.parser,128),segments:EvidenceSegment[]=[],cells=new Map<string,DocumentCell>();
  const metadata=v.metadata===undefined?{}:record(v.metadata),pdfOcr=metadata.pdf_ocr===undefined?undefined:parsePdfOcrEvidence(metadata.pdf_ocr);
  if(pdfOcr&&format!=='pdf')throw Error('PDF OCR settings do not match the document format');
  const occupied=new Set<string>(),identities=new Set<string>(),tables=new Map<string,DocumentCell[]>();
@@ -81,7 +84,7 @@ export function parseDocumentEvidence(value:unknown,source:DocumentSource):Docum
    }
   }}
  }
- return {filename,format,parser,segments,cells,tables:Array.from(tables,([locator,cells])=>({locator,cells:cells.sort((a,b)=>a.row-b.row||a.column-b.column)})),notes,pdfOcr,media:parseMediaTranscript(format,parser,metadata,list(v.segments,20000))};
+ return {filename:documentFilename,format,parser,segments,cells,tables:Array.from(tables,([locator,cells])=>({locator,cells:cells.sort((a,b)=>a.row-b.row||a.column-b.column)})),notes,pdfOcr,media:parseMediaTranscript(format,parser,metadata,list(v.segments,20000))};
 }
 export function cellExcerpt(cell:DocumentCell,evidence:DocumentEvidence){
  const segment=evidence.segments[cell.segment],bytes=encoder.encode(segment.text),start=cell.start-segment.start,end=cell.end-segment.start;

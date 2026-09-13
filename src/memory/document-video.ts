@@ -19,6 +19,9 @@ function text(value:unknown,max:number):string{
  if(typeof value!=='string'||!value.length||value.length>max||decoder.decode(encoder.encode(value))!==value)throw Error('Invalid video evidence text.');
  return value;
 }
+function characters(value:unknown,max:number):string{
+ const result=text(value,max*2);if(Array.from(result).length>max)throw Error('Video text exceeds its character limit.');return result;
+}
 function integer(value:unknown,max:number,min=0):number{
  if(typeof value!=='number'||!Number.isSafeInteger(value)||value<min||value>max)throw Error('Invalid video evidence count.');
  return value;
@@ -41,10 +44,10 @@ function timeBase(value:unknown):[string,bigint,bigint]{
 }
 function regions(value:unknown,content:string):VideoRegion[]{
  const encoded=encoder.encode(content);let previous=0;
- return list(value,10000).map(item=>{
-  const v=record(item),start=integer(v.start,encoded.length),end=integer(v.end,encoded.length),label=text(v.text,100000);
+ const result=list(value,20000).map(item=>{
+  const v=record(item),start=integer(v.start,encoded.length),end=integer(v.end,encoded.length),label=characters(v.text,100000);
   if(v.coordinate_space!=='normalized_displayed_frame_top_left'||start<previous||end<=start
-   ||decoder.decode(encoded.subarray(start,end))!==label)throw Error('Video region does not match its UTF-8 source span.');
+   ||decoder.decode(encoded.subarray(start,end))!==label||decoder.decode(encoded.subarray(previous,start)).trim())throw Error('Video region does not match its UTF-8 source span.');
   previous=end;
   const box=list(v.box,4);
   if(box.length!==4||!box.every(n=>typeof n==='number'&&Number.isFinite(n)&&n>=0&&n<=1))throw Error('Invalid video OCR box.');
@@ -52,8 +55,10 @@ function regions(value:unknown,content:string):VideoRegion[]{
   if(rectangle[0]>=rectangle[2]||rectangle[1]>=rectangle[3])throw Error('Video OCR box is empty.');
   const score=v.score??null;
   if(score!==null&&(typeof score!=='number'||!Number.isFinite(score)||score<0||score>1))throw Error('Invalid OCR recognizer score.');
-  return {text:label,start,end,box:[...rectangle],score};
+  return {text:label,start,end,box:[...rectangle] as [number,number,number,number],score};
  });
+ if(decoder.decode(encoded.subarray(previous)).trim())throw Error('Video OCR regions omit recognized text.');
+ return result;
 }
 
 export function parseVideoCatalogue(value:unknown,source:DocumentSource,episodeId:number,space:string):VideoCatalogue{
@@ -84,7 +89,7 @@ export function parseVideoCatalogue(value:unknown,source:DocumentSource,episodeI
   const relative=(position-start)*numerator;
   if(relative<BigInt(requestedSeconds.at(-1)!)*denominator||relative>=duration)throw Error('Video frame falls outside its sampling interval.');
   totalBytes+=bytes;lastOrdinal=ordinal;lastTimestamp=position;
-  return {ordinal,presentationTimestamp:pts,requestedSeconds,width,height,bytes,sha256:hash(f.png_sha256),ocrEngine:text(f.ocr_engine,96),
+  return {ordinal,presentationTimestamp:pts,requestedSeconds,width,height,bytes,sha256:hash(f.png_sha256),ocrEngine:characters(f.ocr_engine,96),
    empty:f.empty,text:'',regions:[] as VideoRegion[]};
  });
  if(!frames.length||totalBytes>maxTotalBytes||covered+unavailableRequests!==requests.length)throw Error('Video sampling coverage is inconsistent.');
@@ -100,7 +105,7 @@ export function parseVideoCatalogue(value:unknown,source:DocumentSource,episodeI
  if(frames.some(frame=>!frame.empty&&!seen.has(String(frame.ordinal))))throw Error('Video frame text is missing.');
  const modelRevision=text(v.model_revision,128);
  if(!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(modelRevision))throw Error('Invalid video OCR model revision.');
- return {document,sourceSha256,decoderRevision:hash(v.decoder_revision),policyRevision:text(v.policy_revision,96),modelRevision,
+ return {document,sourceSha256,decoderRevision:hash(v.decoder_revision),policyRevision:characters(v.policy_revision,96),modelRevision,
   streamIndex,timeBase:base,startTimestamp,durationTicks,intervalSeconds,decodedFrames,unavailableRequests,frames};
 }
 
