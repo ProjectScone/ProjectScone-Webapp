@@ -3,6 +3,7 @@ import {ApiError,type ApiClient} from '../api';
 import {isHandoffPlan,parseSavedEdit,planAddress,validatePlan,type AgentChoice,type HandoffAgent,type HandoffPlan,type SavedPlan} from './plans';
 import {OutputRequirementsEditor} from './OutputRequirementsEditor';
 import {requireOutputCapabilities} from './output-requirements';
+import {AgentTools} from './AgentTools';
 const secureRequest={cache:'no-store',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer'} as const;
 export function HandoffEditor({api,space,catalog,initial,onSave,onDirty,handoffRequirementsAvailable,schemaAvailable}:{handoffRequirementsAvailable:boolean;schemaAvailable:boolean;api:ApiClient;space:string;catalog:AgentChoice[];initial:SavedPlan|null;onSave:(plan:SavedPlan)=>void;onDirty:()=>void}){
  const first=catalog[0];
@@ -45,6 +46,7 @@ export function HandoffEditor({api,space,catalog,initial,onSave,onDirty,handoffR
      <label>Model<select aria-label={`Model for ${selected.agent_id}`} value={selected.model_id} onChange={event=>update(index,{model_id:event.target.value})}>
       {!agent?.models.some(model=>model.model_id===selected.model_id)&&<option value={selected.model_id}>{selected.model_id} (unavailable)</option>}{agent?.models.map(model=><option key={model.model_id} value={model.model_id}>{model.label} · {model.model_id}</option>)}
      </select></label>
+     <AgentTools tools={agent?.tools}/>
      <fieldset className="agent-dependencies"><legend>Allowed handoff targets</legend>{plan.agents.map(target=><label key={target.agent_id}><input type="checkbox" checked={selected.can_handoff_to.includes(target.agent_id)} onChange={event=>update(index,{can_handoff_to:event.target.checked?[...selected.can_handoff_to,target.agent_id]:selected.can_handoff_to.filter(id=>id!==target.agent_id)})}/>{target.agent_id}{target.agent_id===selected.agent_id?' (repeat this agent)':''}</label>)}</fieldset>
      {!selected.can_handoff_to.length&&<p>This agent must finish without handing off.</p>}
     </section>;

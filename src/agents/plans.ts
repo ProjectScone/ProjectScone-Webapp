@@ -1,6 +1,7 @@
 import {parseOutputRequirements,type OutputRequirements} from './output-requirements.ts';
 export interface ModelChoice {model_id:string;label:string;revision:string}
-export interface AgentChoice {agent_id:string;default_model:string;models:ModelChoice[]}
+export interface ToolChoice {name:string;description:string;revision:string}
+export interface AgentChoice {agent_id:string;default_model:string;models:ModelChoice[];tools?:ToolChoice[]}
 export interface AgentTask {task_id:string;agent_id:string;model_id:string;prompt:string;depends_on:string[];answer_requirements?:OutputRequirements}
 export interface HumanInputTask {kind:'input';task_id:string;prompt:string;depends_on:string[];max_response_bytes:number}
 export type TaskNode=AgentTask|HumanInputTask;
@@ -43,13 +44,38 @@ function list(value:unknown,max:number):unknown[]{
  return value as unknown[];
 }
 function unique(values:string[]):void{if(new Set(values).size!==values.length)throw Error('Duplicate agent configuration identifiers.');}
+const reservedTools=new Set(['search_memory','trace_memory','read_memory','compute_memory','answer','unknown_tool','custom_tool']);
+function toolName(value:unknown):string{
+ const name=text(value,64);
+ if(!/^[A-Za-z0-9_-]+$/.test(name)||reservedTools.has(name))throw Error('Invalid application tool name.');
+ return name;
+}
+function toolTable(value:unknown):Map<string,ToolChoice>{
+ const entries=list(value,32).map(value=>{
+  const row=record(value);
+  if(Object.keys(row).some(key=>!['name','description','revision'].includes(key)))throw Error('Invalid application tool metadata.');
+  const name=toolName(row.name),description=text(row.description,4000),revision=text(row.revision,128);
+  if(/[\uD800-\uDFFF]/u.test(description)||new TextEncoder().encode(description).length>4000||!/^[A-Za-z0-9._:-]+$/.test(revision))throw Error('Invalid application tool metadata.');
+  return {name,description,revision};
+ });
+ unique(entries.map(tool=>tool.name));
+ if(new TextEncoder().encode(JSON.stringify(entries)).length>128000)throw Error('Application tool metadata exceeds its byte limit.');
+ return new Map(entries.map(tool=>[tool.name,tool]));
+}
+function selectedTools(row:Record<string,unknown>,table:Map<string,ToolChoice>|undefined):ToolChoice[]|undefined{
+ if(!table){if('tools' in row)throw Error('Application tool descriptions are missing.');return undefined;}
+ const names=list(row.tools,32).map(toolName);unique(names);
+ return names.map(name=>{const tool=table.get(name);if(!tool)throw Error('Selected application tool is unavailable.');return {...tool};});
+}
 export function parseCatalog(value:unknown):AgentChoice[]{
- const agents=list(record(value).agents,32).map(value=>{
+ const packet=record(value),table='tools' in packet?toolTable(packet.tools):undefined;
+ const agents=list(packet.agents,32).map(value=>{
   const row=record(value),models=list(row.models,64).map(value=>{const model=record(value);return {model_id:identifier(model.model_id),label:text(model.label,256),revision:identifier(model.revision)};});
   unique(models.map(model=>model.model_id));
   const default_model=identifier(row.default_model);
   if(!models.some(model=>model.model_id===default_model))throw Error('Agent default model is unavailable.');
-  return {agent_id:identifier(row.agent_id),default_model,models};
+  const tools=selectedTools(row,table);
+  return {agent_id:identifier(row.agent_id),default_model,models,...(tools===undefined?{}:{tools})};
  });
  unique(agents.map(agent=>agent.agent_id));return agents;
 }

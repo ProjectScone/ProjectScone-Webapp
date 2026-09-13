@@ -9,6 +9,7 @@ import {requireOutputCapabilities} from './output-requirements';
 import {RunPanel} from './RunPanel';
 import {HandoffEditor} from './HandoffEditor';
 import {parseRunPolicy} from './runs';
+import {AgentTools} from './AgentTools';
 
 const secureRequest={cache:'no-store',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer'} as const;
 
@@ -54,6 +55,7 @@ function Editor({api,space,catalog,initial,onSave,onDirty,inputsAvailable,requir
       <label>Model<select aria-label="Model" value={task.model_id} onChange={event=>update(index,{...task,model_id:event.target.value})}>
        {!agent?.models.some(model=>model.model_id===task.model_id)&&<option value={task.model_id}>{task.model_id||'Choose a model'} (unavailable)</option>}{agent?.models.map(model=><option key={model.model_id} value={model.model_id}>{model.label} · {model.model_id}</option>)}
       </select></label></>}{isInputTask(task)&&<label>Maximum reply bytes<input type="number" min={1} max={4000} value={task.max_response_bytes} onChange={event=>update(index,{...task,max_response_bytes:Number(event.target.value)})}/></label>}</div>
+     {!isInputTask(task)&&<AgentTools tools={agent?.tools}/>}
      <label>{isInputTask(task)?'Question for the user':'Task instructions'}<textarea aria-label={isInputTask(task)?'Question for the user':'Task instructions'} required maxLength={2000} rows={3} value={task.prompt} onChange={event=>update(index,{...task,prompt:event.target.value})}/></label>
      {!isInputTask(task)&&<OutputRequirementsEditor value={task.answer_requirements} available={requirementsAvailable} schemaAvailable={schemaAvailable} onChange={value=>update(index,{...task,answer_requirements:value})}/>}
      <fieldset className="agent-dependencies"><legend>Receive outputs from</legend>{plan.tasks.filter((_,i)=>i!==index).map((other,i)=><label key={i}><input type="checkbox" checked={task.depends_on.includes(other.task_id)} onChange={event=>update(index,{...task,depends_on:event.target.checked?[...task.depends_on,other.task_id]:task.depends_on.filter(id=>id!==other.task_id)})}/>{other.task_id||'Unnamed task'}</label>)}{plan.tasks.length===1&&<p>No other tasks yet.</p>}</fieldset>
