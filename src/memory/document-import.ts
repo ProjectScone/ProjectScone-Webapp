@@ -19,7 +19,7 @@ export type ImportApi=Pick<ApiClient,'request'|'uploadDocument'>;
 const encoder=new TextEncoder(),decoder=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true});
 function record(value:unknown):Record<string,unknown>{if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid document response.');return value as Record<string,unknown>;}
 function text(value:unknown,max:number):string{if(typeof value!=='string'||!value.length||value.length>max||decoder.decode(encoder.encode(value))!==value)throw Error('Invalid document response text.');return value;}
-function count(value:unknown,max=Number.MAX_SAFE_INTEGER):number{if(typeof value!=='number'||!Number.isSafeInteger(value)||value<1||value>max)throw Error('Invalid document response count.');return value;}
+function count(value:unknown,max=Number.MAX_SAFE_INTEGER,min=1):number{if(typeof value!=='number'||!Number.isSafeInteger(value)||value<min||value>max)throw Error('Invalid document response count.');return value;}
 function attachment(value:unknown):ImageAttachment{const v=record(value),id=text(v.attachment_id,64);if(!/^[a-f0-9]{64}$/.test(id))throw Error('Invalid document attachment identity.');return {attachment_id:id,media_type:text(v.media_type,256),bytes:count(v.bytes,MAX_FILE_BYTES)};}
 function sameAttachment(actual:ImageAttachment,expected:ImageAttachment){if(actual.attachment_id!==expected.attachment_id||actual.bytes!==expected.bytes||actual.media_type!==expected.media_type)throw Error('Document receipt does not match its attachment.');}
 const message=(error:unknown)=>error instanceof Error?error.message:'Document request failed.';
@@ -58,7 +58,9 @@ export function parseReceipt(value:unknown,original:ImageAttachment,filename:str
  const videoOcr=videoOcrChoice(v.video_ocr);
  if(videoOcr!==expectedVideo||(videoOcr&&pdfOcr))throw Error('Document receipt does not match the selected video extraction mode.');
  if(!samePdfOcr(pdfOcr,expectedOcr))throw Error('Document receipt does not match the selected PDF OCR settings.');
- return {episodeId:count(added.episode_id),deduplicated:added.deduplicated,original:savedOriginal,manifest,filename,format:text(v.format,64),segments:count(v.segments,20000),pdfOcr,videoOcr};
+ const segments=count(v.segments,20000,videoOcr?0:1);
+ if(segments===0&&added.chunks!==0)throw Error('A video without recognized text must have zero text chunks.');
+ return {episodeId:count(added.episode_id),deduplicated:added.deduplicated,original:savedOriginal,manifest,filename,format:text(v.format,64),segments,pdfOcr,videoOcr};
 }
 export async function verifyDocumentImport(api:ImportApi,receipt:ImportReceipt,signal:AbortSignal,expectedSpace?:string):Promise<VerifiedImport>{
  const active=AbortSignal.any([signal,AbortSignal.timeout(60000)]);active.throwIfAborted();
