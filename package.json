@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "check:assets": "node scripts/package.mjs --check",
     "test": "node --test tests/*.test.mjs tests/*.test.ts",
+    "test:agent-approvals:browser": "node scripts/check-agent-approvals.mjs",
     "start": "node scripts/host.mjs"
   },
   "dependencies": {
