@@ -1,4 +1,5 @@
 import {readDocumentOriginal,validateOriginalReference} from './memory/document-download.ts';
+import {readVideoFrame,validateVideoFrameReference,type VideoFrameReference} from './memory/document-video-frame.ts';
 import {exportAddress,readGraphExport,type GraphExportRequest,type GraphExportFile} from './memory/knowledge-export.ts';
 import {attachVoiceSocket,type VoiceEvents} from './conversations/voice/channel.ts';
 import {voiceSocketUrl} from './conversations/voice/wire.ts';
@@ -10,6 +11,7 @@ export interface ApiClient {
   uploadImage(file: File, signal?: AbortSignal): Promise<ImageAttachment>;
   uploadDocument(file: File, signal?: AbortSignal): Promise<ImageAttachment>;
   documentAudio(episodeId:number,audio:ImageAttachment,signal?:AbortSignal):Promise<Blob>;
+  documentVideoFrame(episodeId:number,frame:VideoFrameReference,signal:AbortSignal):Promise<Blob>;
   documentOriginal(original:ImageAttachment,signal?:AbortSignal):Promise<Blob>;
   conversationStream(sid: string, requestId: string, after: number, signal: AbortSignal): Promise<ReadableStream<Uint8Array>>;
   voiceConnection(sid:string,format:{sampleRate:number;channels:number},events:VoiceEvents,signal:AbortSignal):ReturnType<typeof attachVoiceSocket>;
@@ -27,6 +29,15 @@ export class ApiError extends Error {
 
 export function createApiClient(key: string, unauthorized: () => void, base = ''): ApiClient {
   return {
+    async documentVideoFrame(episodeId,frame,signal){
+      if(!Number.isSafeInteger(episodeId)||episodeId<1)throw Error('Invalid video source identity.');
+      validateVideoFrameReference(frame);
+      const active=AbortSignal.any([signal,AbortSignal.timeout(60000)]);active.throwIfAborted();
+      const response=await fetch(base+`/v1/episodes/${episodeId}/document/video/frames/${frame.ordinal}`,{
+        headers:{Authorization:'Bearer '+key},signal:active,cache:'no-store',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer'});
+      if(!response.ok){await response.body?.cancel();if(response.status===401)unauthorized();throw new ApiError(response.status,`Video frame preparation failed (${response.status}).`);}
+      return readVideoFrame(response,frame,active);
+    },
     async graphExport(request,signal){
       const path=exportAddress(request),active=signal?AbortSignal.any([signal,AbortSignal.timeout(60000)]):AbortSignal.timeout(60000);
       active.throwIfAborted();
