@@ -552,3 +552,30 @@ local SQLite and source journals on desktop/mobile, including edits, deletion,
 result paging, restart without replay, process termination and explicit recovery.
 Use the explicit Python/browser environment described above; its state is private
 to the test and it does not connect to the running memory service.
+
+### Sampled video text and frame citations
+
+When the server advertises video OCR, choose **Visible text in sampled frames**
+before selecting videos, or change the choice on an individual queued file.
+Speech transcription remains the default when available. Frame OCR excludes
+speech; other file types keep their existing extraction choices. Both the local
+queue and background imports bind this choice to the saved request and result.
+
+**Inspect sampled video frames** on a source or verified import reads the retained
+sampling record. Select a frame, then **Prepare checked frame** to display PNG
+pixels verified against its hash, dimensions, ordinal and exact presentation
+timestamp. Select recognized text to highlight its stored box. Long region lists
+are paginated. The catalogue uses decimal-string int64 clocks and rational time
+bases so large offsets are not rounded by JavaScript.
+
+Empty OCR results remain visible in the frame inventory. They do not establish
+that an image is blank, and sampling does not establish coverage between frames.
+Viewing frames reruns neither OCR nor transcription. Cancellation, changing the
+source/space/frame, and clearing evidence discard pending results and release
+prepared image URLs. Source access is rechecked before pixels are displayed;
+these observations are not an atomic transaction across storage systems.
+
+This requires a native host supporting the version-one video catalogue and
+verified frame endpoint. Existing audio and document evidence remain available
+on older hosts. Video-only sources without recognized text and generated video
+interpretation are not implemented by this viewer.

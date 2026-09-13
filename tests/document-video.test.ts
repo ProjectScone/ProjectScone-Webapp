@@ -66,7 +66,7 @@ test('frame preparation rechecks source and space after downloading pixels',asyn
  const f=videoFixture(),expected=parseVideoCatalogue(f.catalogue,f.source,7,'alpha');let changed=false;
  const api={request:async<T>(path:string):Promise<T>=>{
   const original=f.source.binding.original,manifest=f.source.binding.manifest;
-  const source={episode_id:7,kind:'file',content:changed?'Changed':f.source.content,
+  const source={episode_id:7,space:'alpha',kind:'file',content:changed?'Changed':f.source.content,
    metadata:{document_original:original.attachment_id,document_manifest:manifest.attachment_id,document_format:'mp4'},attachments:[original,manifest]};
   return (path==='/v1/status'?{space:'alpha'}:path.endsWith('/catalogue')?f.catalogue:source) as T;
  },documentVideoFrame:async()=>{changed=true;return new Blob(['pixels']);}};
@@ -77,7 +77,7 @@ test('a substituted catalogue refuses before any frame download',async()=>{
  f.catalogue.evidence.video.model_revision='changed';
  const {original,manifest}=f.source.binding;
  const api={request:async<T>(path:string):Promise<T>=>(path==='/v1/status'?{space:'alpha'}:path.endsWith('/catalogue')?f.catalogue:
-  {episode_id:7,kind:'file',content:f.source.content,metadata:{document_original:original.attachment_id,document_manifest:manifest.attachment_id,document_format:'mp4'},attachments:[original,manifest]}) as T,
+  {episode_id:7,space:'alpha',kind:'file',content:f.source.content,metadata:{document_original:original.attachment_id,document_manifest:manifest.attachment_id,document_format:'mp4'},attachments:[original,manifest]}) as T,
   documentVideoFrame:async()=>{downloaded=true;return new Blob();}};
  await assert.rejects(prepareVideoFrame(api,f.source,7,'alpha',expected,0,new AbortController().signal));assert.equal(downloaded,false);
 });
@@ -85,4 +85,18 @@ test('catalogue reader refuses changed connection space',async()=>{
  const f=videoFixture();let reads=0;
  const api={request:async<T>():Promise<T>=>{reads++;return {space:'beta'} as T;}};
  await assert.rejects(readVideoCatalogue(api,f.source,7,'alpha',new AbortController().signal));assert.equal(reads,1);
+});
+
+for(const operation of ['catalogue','frame'] as const)test(`${operation} refuses forgetting during the last connection check`,async()=>{
+ const f=videoFixture(),expected=parseVideoCatalogue(f.catalogue,f.source,7,'alpha'),{original,manifest}=f.source.binding;
+ let statuses=0,gone=false;
+ const api={request:async<T>(path:string):Promise<T>=>{
+  if(path==='/v1/status'){statuses++;if(statuses===(operation==='catalogue'?2:3))gone=true;return {space:'alpha'} as T;}
+  if(path.endsWith('/catalogue'))return f.catalogue as T;
+  if(gone)throw Error('Source forgotten');
+  return {episode_id:7,space:'alpha',kind:'file',content:f.source.content,metadata:{document_original:original.attachment_id,document_manifest:manifest.attachment_id,document_format:'mp4'},attachments:[original,manifest]} as T;
+ },documentVideoFrame:async()=>new Blob(['pixels'])};
+ const signal=new AbortController().signal;
+ await assert.rejects(operation==='catalogue'?readVideoCatalogue(api,f.source,7,'alpha',signal):prepareVideoFrame(api,f.source,7,'alpha',expected,0,signal),/forgotten/);
+ assert.equal(gone,true);
 });

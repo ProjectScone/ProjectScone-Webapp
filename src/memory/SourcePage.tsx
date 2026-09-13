@@ -1,6 +1,7 @@
 import {displayFilename} from './filename-display';
 import {MEDIA_FORMATS} from './document-media';
 import {SourceDocumentMedia} from './SourceDocumentMedia';
+import {SourceDocumentVideo,VIDEO_FORMATS} from './SourceDocumentVideo';
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {Link,useLocation,useParams} from 'react-router-dom';
 import {ApiError,type ApiClient,type ImageAttachment} from '../api';
@@ -79,6 +80,7 @@ export function SourcePage({api,enabled}:{api:ApiClient;enabled:boolean}){
         {current.documents&&current.original.documentIssue&&<p role="alert">Document attachments could not be verified for this source.</p>}
         {current.documents&&documentSource&&<SourceDocumentEvidence key={`document:${space}:${episodeId}`} api={api} source={documentSource} episodeId={address.episodeId} space={address.space}/>}
         {current.documents&&documentSource&&MEDIA_FORMATS.has(documentSource.binding.format)&&<SourceDocumentMedia api={api} source={documentSource} episodeId={address.episodeId} space={address.space}/>}
+        {current.documents&&documentSource&&VIDEO_FORMATS.has(documentSource.binding.format)&&<SourceDocumentVideo api={api} source={documentSource} episodeId={address.episodeId} space={address.space}/>}
         {current.documents&&documentSource?.binding.format==='pdf'&&<SourceDocumentOcr key={`ocr:${space}:${episodeId}`} api={api} source={documentSource} episodeId={address.episodeId} space={address.space} tables={current.tables}/>}
         {current.provenance&&provenanceSource&&<SourceProvenance api={api} source={provenanceSource}/>}
         {current.attachments&&<SourceImages api={api} episodeId={address.episodeId}/>}<SourceImageUnderstanding key={`${address.space}:${address.episodeId}`} api={api} episodeId={address.episodeId} space={address.space} images={current.original.images} available={current.understand===true} canSetup={current.models===true}/><footer>{current.forget&&<Link to={`/memory/sources/${address.episodeId}/forget?${new URLSearchParams({space:address.space})}`}>Review source removal</Link>}<span>Episode #{episodeId} · {space}</span><button className="btn quiet small" onClick={retry}>Refresh source</button></footer>

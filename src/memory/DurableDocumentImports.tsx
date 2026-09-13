@@ -1,7 +1,8 @@
 import {displayFilename} from './filename-display';
 import {useEffect,useMemo,useRef,useState} from 'react';
 import type {ApiClient} from '../api';
-import {ImportEvidence,PdfOcrControls} from './DocumentImports';
+import {ImportEvidence,PdfOcrControls,VideoImportChoice,documentAccept} from './DocumentImports';
+import {videoFilename} from './document-video-import';
 import {parseDocumentFormats,validateDocumentSelection,type DocumentFormats,type VerifiedImport} from './document-import';
 import {validatePdfOcr,type PdfOcrSelection} from './document-ocr';
 import {canResumeDocumentJob,canVerifyDocumentJob,controlDocumentJob,parseDocumentJob,readDocumentJobRequest,readDocumentJobs,verifyDocumentJob,type DocumentJob,type DocumentJobPage,type DocumentJobSubmission} from './document-jobs';
@@ -11,7 +12,7 @@ import './document-import.css';
 const submissions=new WeakMap<ApiClient,Map<string,DocumentJobSubmission>>();
 function submittedFor(api:ApiClient){let saved=submissions.get(api);if(!saved){saved=new Map();submissions.set(api,saved);}return saved;}
 
-type PendingFile={id:string;file:File;pdfOcr?:PdfOcrSelection;state:'queued'|'uploading'|'admitting'|'admitted'|'uncertain';error?:string};
+type PendingFile={id:string;file:File;pdfOcr?:PdfOcrSelection;videoOcr?:boolean;state:'queued'|'uploading'|'admitting'|'admitted'|'uncertain';error?:string};
 const failure=(error:unknown)=>error instanceof Error?error.message:'The import request failed.';
 const labels:Record<DocumentJob['status'],string>={registered:'Waiting for explicit resume',created:'Starting import',running:'Working',interrupted:'Interrupted',cancelled:'Cancelled',completed:'Indexing completed',failed:'Attempt failed',sources_invalid:'Source no longer valid',verification_unavailable:'Source verification unavailable',deadline:'Deadline reached',outcome_unknown:'Outcome uncertain',retry_not_allowed:'Cannot retry this stage',unavailable:'Job unavailable'};
 const requestOptions=(signal:AbortSignal):RequestInit=>({signal:AbortSignal.any([signal,AbortSignal.timeout(30000)]),cache:'no-store',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer'});
@@ -23,6 +24,7 @@ export function DurableDocumentImports({api,onSaved}:{api:ApiClient;onSaved:()=>
 function ImportJobsWorkspace({api,onSaved}:{api:ApiClient;onSaved:()=>void}){
  const [picker,setPicker]=useState(false),[catalog,setCatalog]=useState<DocumentFormats|null>(null),[catalogError,setCatalogError]=useState('');
  const [queue,setQueue]=useState<PendingFile[]>([]),[uploading,setUploading]=useState(false),[queueError,setQueueError]=useState('');
+ const [videoForNew,setVideoForNew]=useState(false);
  const [cursors,setCursors]=useState<(string|undefined)[]>([undefined]),[version,setVersion]=useState(0);
  const [snapshot,setSnapshot]=useState<{after:string|undefined;page:DocumentJobPage}|null>(null),[loading,setLoading]=useState(true),[error,setError]=useState('');
  const [acting,setActing]=useState<string|null>(null),[actionError,setActionError]=useState('');
@@ -58,8 +60,9 @@ function ImportJobsWorkspace({api,onSaved}:{api:ApiClient;onSaved:()=>void}){
  const choose=(files:FileList|null)=>{
   if(!catalog||!files||busy.current)return;
   try{
-   const chosen=Array.from(files);validateDocumentSelection([...rows.current.map(row=>row.file),...chosen],catalog);
-   updateQueue([...rows.current,...chosen.map(file=>({id:'import-'+crypto.randomUUID(),file,state:'queued' as const}))]);setQueueError('');
+   const chosen=Array.from(files).map(file=>({id:'import-'+crypto.randomUUID(),file,videoOcr:videoForNew&&videoFilename(file.name),state:'queued' as const}));
+   const next=[...rows.current,...chosen];validateDocumentSelection(next.map(row=>row.file),catalog,next.map(row=>Boolean(row.videoOcr)));
+   updateQueue(next);setQueueError('');
   }catch(error){setQueueError(failure(error));}
  };
  const admit=async()=>{
@@ -69,12 +72,12 @@ function ImportJobsWorkspace({api,onSaved}:{api:ApiClient;onSaved:()=>void}){
    for(const row of rows.current.filter(row=>row.state==='queued')){
     let submitted=false;
     try{
-     validateDocumentSelection([row.file],catalog);validatePdfOcr(row.file.name,catalog.pdfOcr,row.pdfOcr);
+     validateDocumentSelection([row.file],catalog,[Boolean(row.videoOcr)]);validatePdfOcr(row.file.name,catalog.pdfOcr,row.pdfOcr);
      patch(row.id,{state:'uploading'});
      const original=await api.uploadDocument(row.file,signal);signal.throwIfAborted();
-     const expected={space,attachmentId:original.attachment_id,filename:row.file.name,pdfOcr:row.pdfOcr};
+     const expected={space,attachmentId:original.attachment_id,filename:row.file.name,pdfOcr:row.pdfOcr,videoOcr:row.videoOcr};
      submittedFor(api).set(row.id,expected);patch(row.id,{state:'admitting'});submitted=true;
-     const value=await api.request<unknown>('/v1/document-jobs',{...requestOptions(signal),method:'POST',body:JSON.stringify({import_id:row.id,attachment_id:original.attachment_id,filename:row.file.name,...(row.pdfOcr?{pdf_ocr:row.pdfOcr}:{})})});
+     const value=await api.request<unknown>('/v1/document-jobs',{...requestOptions(signal),method:'POST',body:JSON.stringify({import_id:row.id,attachment_id:original.attachment_id,filename:row.file.name,...(row.pdfOcr?{pdf_ocr:row.pdfOcr}:{}),...(row.videoOcr?{video_ocr:true}:{})})});
      const job=parseDocumentJob(value,space,row.id);
      if(job.attachmentId!==original.attachment_id||job.filename!==row.file.name)throw Error('The admitted job does not match this file.');
      await readDocumentJobRequest(api,job,signal,expected);
@@ -108,13 +111,16 @@ function ImportJobsWorkspace({api,onSaved}:{api:ApiClient;onSaved:()=>void}){
    <p>Files waiting to upload stay in this page only. Keep it open until the server acknowledges each import.</p>
    {catalogError&&<p role="alert">{catalogError} Reopen Documents to retry format discovery.</p>}
    {!catalog&&!catalogError&&<p role="status">Checking document formats…</p>}
-   {catalog&&<label className="import-picker">Choose documents<input type="file" multiple disabled={uploading} accept={Array.from(catalog.formats).filter(([,format])=>format.available).map(([extension])=>extension).join(',')} onChange={event=>{choose(event.target.files);event.target.value='';}}/><small>20 files / 100 MiB per selection queue</small></label>}
+   {catalog?.videoOcr?.available&&<VideoImportChoice value={videoForNew} disabled={uploading} onChange={setVideoForNew}/>}
+   {catalog&&<label className="import-picker">Choose documents<input type="file" multiple disabled={uploading} accept={documentAccept(catalog,videoForNew)} onChange={event=>{choose(event.target.files);event.target.value='';}}/><small>20 files / 100 MiB per selection queue</small></label>}
    {queueError&&<p role="alert">{queueError}</p>}
    <ol className="import-list">{queue.map(row=><li key={row.id} className="import-row">
     <div className="import-row-heading"><strong>{displayFilename(row.file.name)}</strong><span role="status">{{queued:'Ready',uploading:'Uploading original',admitting:'Requesting import',admitted:'Acknowledged by server',uncertain:'Admission unconfirmed'}[row.state]}</span></div>
     <small className="import-digest">Import ID: {row.id}</small>
     {row.error&&<p role="alert">{row.error}</p>}
     {catalog?.pdfOcr?.available&&row.state==='queued'&&row.file.name.toLowerCase().endsWith('.pdf')&&<PdfOcrControls filename={row.file.name} catalog={catalog.pdfOcr} value={row.pdfOcr} disabled={uploading} onChange={pdfOcr=>patch(row.id,{pdfOcr})}/>}
+    {catalog?.videoOcr?.available&&row.state==='queued'&&videoFilename(row.file.name)&&<VideoImportChoice label={`Video extraction for ${displayFilename(row.file.name)}`} value={Boolean(row.videoOcr)} disabled={uploading} onChange={videoOcr=>patch(row.id,{videoOcr})}/>}
+    {row.videoOcr&&row.state!=='queued'&&<p>Visible text from sampled frames · audio excluded</p>}
     {!uploading&&<button className="btn quiet small" onClick={()=>updateQueue(rows.current.filter(item=>item.id!==row.id))}>Dismiss file selection</button>}
    </li>)}</ol>
    {!!queue.length&&<button className="btn" disabled={uploading||!ready||!page||loading||!!error} onClick={()=>void admit()}>{uploading?'Sending imports…':`Start ${ready} ready ${ready===1?'file':'files'}`}</button>}
