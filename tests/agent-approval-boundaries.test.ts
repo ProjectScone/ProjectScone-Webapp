@@ -29,3 +29,11 @@ test('selected activation acknowledgement binds IDs, revisions, hashes and space
  const activation={space:'alpha',run_id:'one',activation_id:'next',created_at:pending.created_at,decisions:{[record.request_id]:2},decision_digests:{[record.request_id]:record.decision_digest}};
  for(const mutation of [{decisions:{[record.request_id]:true}},{decision_digests:{[record.request_id]:'f'.repeat(64)}},{space:'bravo'},{decisions:{[record.request_id]:2,extra:2}},{decision_digests:{[record.request_id]:record.decision_digest,extra:'f'.repeat(64)}}])assert.throws(()=>matchContinuation({status,activation:{...activation,...mutation}},request,expected,[record]));
 });
+
+test('argument display reveals directional controls without changing approved bytes',async()=>{
+ const {displayArguments}=await import('../src/agents/approval-json.ts');
+ const raw='{"destination":"\u202emoc.elpmaxe@nimda\u202c"}';
+ assert.equal(displayArguments(raw),'{"destination":"\\u202emoc.elpmaxe@nimda\\u202c"}');
+ assert.equal(literalArguments(raw),raw);
+ assert.equal(displayArguments('{"count":1208925819614629174706176,"word":"שלום"}'),'{"count":1208925819614629174706176,"word":"שלום"}');
+});

@@ -1,6 +1,7 @@
 import type {ApiClient} from '../api.ts';
 import {approvalAddress,matchContinuation,matchDecision,parseApproval,parseApprovalPage,prepareContinuation,sameCall,sameDecision,type ApprovalContinuation,type Decision,type ToolApproval} from './approvals.ts';
 import {runAddress,type RunRequest,type RunStatus} from './runs.ts';
+export interface ApprovalAttemptRef {current:{body:ApprovalContinuation;prior:readonly Readonly<ToolApproval>[]} | null}
 const secure={cache:'no-store',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer'} as const;
 type Transport=Pick<ApiClient,'request'>;
 export async function readApprovals(api:Transport,request:RunRequest,signal:AbortSignal):Promise<Readonly<ToolApproval>[]> {

@@ -40,3 +40,8 @@ export function literalArguments(value:unknown):string {
  };
  if(source[0]!=='{')fail();visit(0);if(cursor!==source.length)fail();return source;
 }
+
+/** Reveal directional controls while keeping the original request bytes intact. */
+export function displayArguments(value:string):string {
+ return value.replace(/[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,character=>'\\u'+character.charCodeAt(0).toString(16).padStart(4,'0'));
+}

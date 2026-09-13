@@ -1,3 +1,6 @@
+import {ApprovalPanel} from './ApprovalPanel';
+import {readApprovals,type ApprovalAttemptRef} from './approval-actions';
+import type {ToolApproval} from './approvals';
 import {UsageDetails} from './UsageDetails';
 import {useEffect,useRef,useState} from 'react';
 import {ApiError,type ApiClient} from '../api';
@@ -15,13 +18,13 @@ function message(error:unknown):string{
  }
  return error instanceof Error?error.message:'The run response is unavailable.';
 }
-function RunView({api,space,id,expected,onChanged,inputsAvailable,usageAvailable}:{api:ApiClient;space:string;id:string;expected?:RunSubmission;onChanged:()=>void;inputsAvailable:boolean;usageAvailable:boolean}){
+function RunView({api,space,id,expected,onChanged,inputsAvailable,usageAvailable,approvalsAvailable,approvalAttempt}:{api:ApiClient;space:string;id:string;expected?:RunSubmission;approvalAttempt:ApprovalAttemptRef;onChanged:()=>void;inputsAvailable:boolean;usageAvailable:boolean;approvalsAvailable:boolean}){
  const [version,setVersion]=useState(0),[request,setRequest]=useState<RunRequest|null>(null),[status,setStatus]=useState<RunStatus|null>(null),[result,setResult]=useState<RunResult|null>(null),[issue,setIssue]=useState(''),[busy,setBusy]=useState(false),[cancelling,setCancelling]=useState(false);
- const [inputs,setInputs]=useState<RunInput[]>([]);
+ const [inputs,setInputs]=useState<RunInput[]>([]),[approvals,setApprovals]=useState<Readonly<ToolApproval>[]>([]);
  const active=useRef<AbortController|null>(null);
  useEffect(()=>{
   const controller=new AbortController();active.current=controller;let timer:ReturnType<typeof setTimeout>|undefined;
-  const started=Date.now();setRequest(null);setStatus(null);setResult(null);setInputs([]);setIssue('');setBusy(true);
+  const started=Date.now();setRequest(null);setStatus(null);setResult(null);setInputs([]);setApprovals([]);setIssue('');setBusy(true);
   const options=()=>({...secureRequest,signal:AbortSignal.any([controller.signal,AbortSignal.timeout(15000)])});
   void (async()=>{
    const original=parseRunRequest(await api.request<unknown>(runAddress(id)+'/request',options()),space,id);
@@ -33,6 +36,7 @@ function RunView({api,space,id,expected,onChanged,inputsAvailable,usageAvailable
      const progress=parseRunStatus(await api.request<unknown>(runAddress(id),options()),space,id);matchRun(progress,original);
      if(controller.signal.aborted)return;setStatus(progress);setResult(null);setIssue('');
      if(isInteractivePlan(original.plan)&&inputsAvailable){const prompts=parseInputPage(await api.request<unknown>(runAddress(id)+'/inputs',options()),original);if(controller.signal.aborted)return;verifiedInputs=prompts;setInputs(prompts);}
+     if(approvalsAvailable){const records=await readApprovals(api,original,options().signal);if(controller.signal.aborted)return;setApprovals(records);}
      terminal=!progress.active_local&&(progress.status!=='running'||progress.outcome_unknown);
      if(!progress.active_local&&['completed','verification_unavailable'].includes(progress.status)){
       const verified=parseRunResult(await api.request<unknown>(runAddress(id)+'/result'+(usageAvailable?'?include_usage=true':''),options()),original,usageAvailable);
@@ -42,14 +46,14 @@ function RunView({api,space,id,expected,onChanged,inputsAvailable,usageAvailable
       if(Date.now()-started<330000)timer=setTimeout(()=>void poll(),1500);
       else setIssue('Automatic status checks paused. Use Check status to continue.');
      }
-    }catch(error){if(!controller.signal.aborted){setResult(null);setInputs([]);setIssue(message(error));}}
+    }catch(error){if(!controller.signal.aborted){setResult(null);setInputs([]);setApprovals([]);setIssue(message(error));}}
     finally{if(!controller.signal.aborted){setBusy(false);if(terminal)onChanged();}}
    };
    await poll();
   })().catch(error=>{if(!controller.signal.aborted){setIssue(message(error));setBusy(false);}});
   return()=>{controller.abort();if(timer)clearTimeout(timer);};
- },[api,space,id,version,expected,inputsAvailable,usageAvailable]);
- const canCancel=!!status&&(status.active_local||(!status.outcome_unknown&&['awaiting_input','registered','created'].includes(status.status)));
+ },[api,space,id,version,expected,inputsAvailable,usageAvailable,approvalsAvailable]);
+ const canCancel=!!status&&(status.active_local||(!status.outcome_unknown&&['awaiting_input','paused','registered','created'].includes(status.status)));
  const cancel=async()=>{
   if(cancelling||!canCancel)return;
   const controller=active.current;if(!controller)return;setCancelling(true);setResult(null);setIssue('');
@@ -67,6 +71,8 @@ function RunView({api,space,id,expected,onChanged,inputsAvailable,usageAvailable
   {status?.error_class&&<p>Run detail: {status.error_class}</p>}
   {request&&<details open><summary>Original request · {request.plan.workflow_id} · Revision {request.revision} · {isHandoffPlan(request.plan)?`Up to ${request.plan.max_handoffs} handoffs`:`Up to ${request.max_parallel} simultaneous tasks`}</summary><p className="agent-output">{request.question}</p>{isHandoffPlan(request.plan)?<><p>Starting agent: {request.plan.root_agent}</p><ul>{request.plan.agents.map(agent=><li key={agent.agent_id}>{agent.agent_id} · {agent.model_id} · {agent.can_handoff_to.length?`May hand off to ${agent.can_handoff_to.join(', ')}`:'Must finish without handing off'}</li>)}</ul></>:<ul>{request.plan.tasks.map(task=><li key={task.task_id}>{task.task_id}: {isInputTask(task)?'Human input':`${task.agent_id} · ${task.model_id}`}{task.depends_on.length?` · Receives ${task.depends_on.join(', ')}`:''}</li>)}</ul>}</details>}
   {request&&status&&inputsAvailable&&inputs.length>0&&<InputPanel api={api} request={request} status={status} items={inputs} onChanged={()=>{setVersion(n=>n+1);onChanged();}}/>}
+  {request&&status&&approvalsAvailable&&approvals.length>0&&<ApprovalPanel attempt={approvalAttempt} api={api} request={request} status={status} items={approvals} onChanged={()=>{setVersion(n=>n+1);onChanged();}}/>}
+  {status?.paused_steps.length&&!approvalsAvailable?<p className="agent-notice">This run is paused for a tool decision. This server does not advertise the approval interface.</p>:null}
   {result?.outcome==='handoff_limit'&&<p className="agent-notice" role="status">The handoff limit was reached. These are partial results; no final answer was produced.</p>}
   {result&&<div aria-label="Verified run results">{result.tasks.map(output=>output.kind==='human_input'?<article key={output.task_id}><h4>{output.task_id} · Human input</h4><p>Reply used by this workflow</p><div className="agent-output">{output.text}</div></article>:<article key={output.task_id}><h4>{output.task_id} · {output.agent_id} · {output.model_id}{result.finalTask===output.task_id?' · Final answer':''}</h4>{output.handoff_to!==undefined&&<p>{output.handoff_to===null?'Agent finished':`Handed off to ${output.handoff_to}`}</p>}<p>{output.source_status==='retained'?`${output.evidence_ids.length} retained evidence references`:'No retained evidence · Treat this as ungrounded model output'} · {output.model_calls} model calls · {output.tool_calls} tool calls</p>{result.reusedTasks?.includes(output.task_id)&&<p>Saved task result reused</p>}{output.usage!==undefined&&<UsageDetails usage={output.usage}/>}<div className="agent-output">{output.text}</div></article>)}</div>}
   {issue&&<p role="alert" className="agent-notice">{issue}</p>}
@@ -86,9 +92,12 @@ function RunHistory({api,space,version,onSelect}:{api:ApiClient;space:string;ver
  useEffect(()=>{const controller=new AbortController();active.current=controller;setItems([]);setAfter(null);void load(controller,null);return()=>controller.abort();},[api,space,version]);
  return <section aria-label="Run history"><h3>Run history in {space}</h3><ul className="agent-run-list">{items.map(run=><li key={run.run_id}><button onClick={()=>onSelect(run.run_id)}>{run.run_id} · {run.workflow_id}<small>{run.status} · Revision {run.plan_revision}</small></button></li>)}</ul>{!busy&&!items.length&&!issue&&<p>No runs saved yet.</p>}{busy&&<p role="status">Loading runs…</p>}{after&&<button disabled={busy} onClick={()=>{if(active.current)void load(active.current,after);}}>Load more runs</button>}{issue&&<p role="alert">{issue}</p>}</section>;
 }
-export function RunPanel({api,space,plan,dirty,maxParallel,handoffsAvailable,inputsAvailable,usageAvailable}:{api:ApiClient;space:string;plan:SavedPlan|null;dirty:boolean;maxParallel:number;handoffsAvailable:boolean;inputsAvailable:boolean;usageAvailable:boolean}){
+export function RunPanel({api,space,plan,dirty,maxParallel,handoffsAvailable,inputsAvailable,usageAvailable,approvalsAvailable}:{api:ApiClient;space:string;plan:SavedPlan|null;dirty:boolean;maxParallel:number;handoffsAvailable:boolean;inputsAvailable:boolean;usageAvailable:boolean;approvalsAvailable:boolean}){
  const [runId,setRunId]=useState<string>(()=>crypto.randomUUID()),[parallel,setParallel]=useState(1),[question,setQuestion]=useState(''),[busy,setBusy]=useState(false),[attempted,setAttempted]=useState(false),[issue,setIssue]=useState(''),[submitted,setSubmitted]=useState<RunSubmission|null>(null),[selected,setSelected]=useState<{id:string;version:number;expected?:RunSubmission}|null>(null),[history,setHistory]=useState(0),[lookup,setLookup]=useState('');
  const active=useRef<AbortController|null>(null);
+ const approvalAttempts=useRef({api,space,items:new Map<string,ApprovalAttemptRef>()});
+ if(approvalAttempts.current.api!==api||approvalAttempts.current.space!==space)approvalAttempts.current={api,space,items:new Map()};
+ const pendingApproval=(id:string):ApprovalAttemptRef=>{const saved=approvalAttempts.current.items.get(id);if(saved)return saved;const created:ApprovalAttemptRef={current:null};approvalAttempts.current.items.set(id,created);return created;};
  const supported=!plan||(isInteractivePlan(plan.plan)?inputsAvailable:!isHandoffPlan(plan.plan)||handoffsAvailable);
  useEffect(()=>()=>active.current?.abort(),[]);
  const inspect=(id:string,expected?:RunSubmission)=>{runAddress(id);setSelected(current=>({id,expected:expected??(submitted?.run_id===id?submitted:undefined),version:(current?.version??0)+1}));};
@@ -109,7 +118,7 @@ export function RunPanel({api,space,plan,dirty,maxParallel,handoffsAvailable,inp
   {attempted&&<div className="agent-actions"><button disabled={busy} onClick={()=>inspect(runId)}>Check submitted run</button><button disabled={busy} onClick={()=>{setRunId(crypto.randomUUID());setAttempted(false);setIssue('');}}>Prepare a new run</button><span>A new run calls the selected models again.</span></div>}
   {issue&&<p role="alert" className="agent-notice">{issue}</p>}
   <form className="agent-run-lookup" onSubmit={event=>{event.preventDefault();try{inspect(lookup);setIssue('');}catch(error){setIssue(message(error));}}}><label>Find run by identifier<input value={lookup} maxLength={128} required onChange={event=>setLookup(event.target.value)}/></label><button>Open run</button></form>
-  {selected&&<RunView key={`${selected.id}:${selected.version}`} api={api} space={space} id={selected.id} expected={selected.expected} inputsAvailable={inputsAvailable} usageAvailable={usageAvailable} onChanged={()=>setHistory(n=>n+1)}/>}
+  {selected&&<RunView approvalAttempt={pendingApproval(selected.id)} key={`${selected.id}:${selected.version}`} api={api} space={space} id={selected.id} expected={selected.expected} inputsAvailable={inputsAvailable} usageAvailable={usageAvailable} approvalsAvailable={approvalsAvailable} onChanged={()=>setHistory(n=>n+1)}/>}
   <RunHistory api={api} space={space} version={history} onSelect={inspect}/>
  </section>;
 }

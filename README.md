@@ -472,8 +472,8 @@ replace the selected model or task graph.
 Saved plans belong to the authenticated space and are loaded without browser
 storage. The server enforces write permissions; read-only users can inspect plans.
 The Python host must configure `AgentCatalog` and `AgentPlanStore` in `create_app`.
-This editor saves configuration; starting, cancelling and inspecting runs in the
-browser remains separate work. Native execution uses `AgentWorkflow`.
+Hosts with run capabilities also support starting, cancelling and inspecting
+saved workflow runs in the browser. Native execution uses `AgentWorkflow`.
 
 Run `node --test scripts/test-agents.cjs` with the same Playwright environment
 variables used above. It verifies packaged desktop/mobile editing, persistence,
@@ -649,3 +649,33 @@ reopening it. A schema checks shape, not factual accuracy.
 selected models, exact save/reload, invalid drafts and final answers, and an
 encrypted journal restart without model replay, at desktop and mobile widths.
 Use the same isolated Python/browser settings as the task contract fixture.
+
+### Exact tool approvals
+
+When the host advertises `agents.approvals`, run inspection shows guarded calls
+with their agent, selected model, workflow step, tool revision and exact JSON
+arguments. Large integers retain their original digits. Directional Unicode
+controls appear as explicit Unicode escapes in both pending requests and history;
+the bound arguments remain unchanged.
+
+**Approve** or **Deny** saves a decision without executing a tool or calling a
+model. Select individual saved decisions and choose **Continue with selected
+decisions** to advance those calls. A denial skips that tool handler and lets the
+agent receive the denial when explicitly continued. Decisions require a review
+or full key; continuation requires a write or full key. The host enforces these
+permissions and binds each decision to the saved call and revision.
+
+An unconfirmed continuation retains its identifier and selected batch across
+status refreshes and reopening that run in the current panel. Retrying is always
+explicit. A continuation already saved by the host can also be recovered after
+reloading the browser. Nothing is automatically resubmitted. Cancelled runs and
+runs with unknown outcomes cannot continue; admitted-call history alone does not
+prove an effect completed. Read the run status and verified results.
+
+After `pnpm build`, `pnpm test:agent-approvals:browser` exercises the packaged
+console against an isolated local HTTP fixture. It checks ambiguous-response
+recovery across status refresh and visible directional controls without changing
+argument values. It requires an installed Playwright module and local browser;
+set `SCONE_PLAYWRIGHT_MODULE` to its module path and
+`SCONE_BROWSER_EXECUTABLE` to the browser executable when they are not available
+through Playwright's defaults. The command does not install or download either.
