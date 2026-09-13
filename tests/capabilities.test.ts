@@ -151,3 +151,11 @@ test('video inference requires an explicit boolean independently of frame viewin
  assert.equal(parseCapabilities({...fixtures.python,features:{...features,'documents.video.understand':true}}).features['documents.video.understand'],true);
  for(const value of ['true',1,null])assert.throws(()=>parseCapabilities({...fixtures.python,features:{...features,'documents.video.understand':value}}));
 });
+
+test('handoff output contracts require their own explicit boolean capability',()=>{
+ const features={...fixtures.python.features,'agents.output_requirements':true,'agents.output_schema':true};
+ delete features['agents.handoffs.output_requirements'];
+ assert.equal(parseCapabilities({...fixtures.python,features}).features['agents.handoffs.output_requirements'],false);
+ assert.equal(parseCapabilities({...fixtures.python,features:{...features,'agents.handoffs.output_requirements':true}}).features['agents.handoffs.output_requirements'],true);
+ for(const value of ['true',1,null])assert.throws(()=>parseCapabilities({...fixtures.python,features:{...features,'agents.handoffs.output_requirements':value}}));
+});

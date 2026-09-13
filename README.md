@@ -629,3 +629,23 @@ actual local native HTTP and encrypted journals at desktop and mobile widths,
 including malformed drafts, selected models, invalid answer withholding and
 process restart without additional inference. It uses the same explicit local
 Python/browser environment variables as the other native browser fixtures.
+
+### Handoff final output requirements
+
+When the host advertises `agents.handoffs.output_requirements`, a handoff workflow
+can set a final text or JSON-object contract, including byte/line limits,
+instructions and an optional schema. Requirements apply when an agent finishes;
+intermediate agents can exchange ordinary prose notes. Each agent retains its
+selected host-approved model and allowed targets.
+
+Schema authoring additionally requires `agents.output_schema`. The console keeps
+authored local references and refuses invalid drafts before saving. An invalid
+schema draft also marks the workflow unsaved, preventing a run against stale
+saved settings. Changing the contract requires a new plan revision and run.
+The native host validates the final result before persistence and again when
+reopening it. A schema checks shape, not factual accuracy.
+
+`scripts/test-handoff-output-native.cjs` exercises real two-agent HTTP execution,
+selected models, exact save/reload, invalid drafts and final answers, and an
+encrypted journal restart without model replay, at desktop and mobile widths.
+Use the same isolated Python/browser settings as the task contract fixture.

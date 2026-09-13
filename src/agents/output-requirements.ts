@@ -82,8 +82,13 @@ export function parseSchemaDraft(text:string):Readonly<Record<string,JsonValue>>
  }
  return schemaSnapshot(parsed);
 }
-export function requireOutputCapabilities(plan:WorkflowPlan,requirements:boolean,schema:boolean):void{
- if('agents' in plan)return;
+export function requireOutputCapabilities(plan:WorkflowPlan,requirements:boolean,schema:boolean,handoffs=false):void{
+ if('agents' in plan){
+  if(!plan.answer_requirements)return;
+  if(!handoffs)fail('This server does not support handoff output requirements.');
+  if(plan.answer_requirements.output_schema&&!schema)fail('This server does not support output schemas.');
+  return;
+ }
  for(const task of plan.tasks){
   if('kind' in task||!task.answer_requirements)continue;
   if(!requirements)fail('This server does not support task output requirements.');
