@@ -7,6 +7,7 @@ import {ApiError,type ApiClient} from '../api';
 import {isHandoffPlan,isInputTask,isInteractivePlan,type SavedPlan} from './plans';
 import {matchRun,matchSubmission,parseRunPage,parseRunRequest,parseRunResult,parseRunStatus,runAddress,validateStart,type RunSubmission,type RunRequest,type RunStatus,type RunResult} from './runs';
 import {InputPanel} from './InputPanel';
+import {HistoryTimeline} from './HistoryTimeline';
 import {matchInputResults,parseInputPage,type RunInput} from './inputs';
 const secureRequest={cache:'no-store',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer'} as const;
 function message(error:unknown):string{
@@ -18,7 +19,7 @@ function message(error:unknown):string{
  }
  return error instanceof Error?error.message:'The run response is unavailable.';
 }
-function RunView({api,space,id,expected,onChanged,inputsAvailable,usageAvailable,approvalsAvailable,approvalAttempt}:{api:ApiClient;space:string;id:string;expected?:RunSubmission;approvalAttempt:ApprovalAttemptRef;onChanged:()=>void;inputsAvailable:boolean;usageAvailable:boolean;approvalsAvailable:boolean}){
+function RunView({api,space,id,expected,onChanged,inputsAvailable,usageAvailable,approvalsAvailable,historyAvailable,approvalAttempt}:{api:ApiClient;space:string;id:string;expected?:RunSubmission;approvalAttempt:ApprovalAttemptRef;onChanged:()=>void;inputsAvailable:boolean;usageAvailable:boolean;approvalsAvailable:boolean;historyAvailable:boolean}){
  const [version,setVersion]=useState(0),[request,setRequest]=useState<RunRequest|null>(null),[status,setStatus]=useState<RunStatus|null>(null),[result,setResult]=useState<RunResult|null>(null),[issue,setIssue]=useState(''),[busy,setBusy]=useState(false),[cancelling,setCancelling]=useState(false);
  const [inputs,setInputs]=useState<RunInput[]>([]),[approvals,setApprovals]=useState<Readonly<ToolApproval>[]>([]);
  const active=useRef<AbortController|null>(null);
@@ -76,6 +77,7 @@ function RunView({api,space,id,expected,onChanged,inputsAvailable,usageAvailable
   {result?.outcome==='handoff_limit'&&<p className="agent-notice" role="status">The handoff limit was reached. These are partial results; no final answer was produced.</p>}
   {result&&<div aria-label="Verified run results">{result.tasks.map(output=>output.kind==='human_input'?<article key={output.task_id}><h4>{output.task_id} · Human input</h4><p>Reply used by this workflow</p><div className="agent-output">{output.text}</div></article>:<article key={output.task_id}><h4>{output.task_id} · {output.agent_id} · {output.model_id}{result.finalTask===output.task_id?' · Final answer':''}</h4>{output.handoff_to!==undefined&&<p>{output.handoff_to===null?'Agent finished':`Handed off to ${output.handoff_to}`}</p>}<p>{output.source_status==='retained'?`${output.evidence_ids.length} retained evidence references`:'No retained evidence · Treat this as ungrounded model output'} · {output.model_calls} model calls · {output.tool_calls} tool calls</p>{result.reusedTasks?.includes(output.task_id)&&<p>Saved task result reused</p>}{output.usage!==undefined&&<UsageDetails usage={output.usage}/>}<div className="agent-output">{output.text}</div></article>)}</div>}
   {issue&&<p role="alert" className="agent-notice">{issue}</p>}
+  {request&&historyAvailable&&<HistoryTimeline api={api} request={request} active={!!status&&(status.active_local||status.status==='running')}/>}
  </section>;
 }
 function RunHistory({api,space,version,onSelect}:{api:ApiClient;space:string;version:number;onSelect:(id:string)=>void}){
@@ -92,7 +94,7 @@ function RunHistory({api,space,version,onSelect}:{api:ApiClient;space:string;ver
  useEffect(()=>{const controller=new AbortController();active.current=controller;setItems([]);setAfter(null);void load(controller,null);return()=>controller.abort();},[api,space,version]);
  return <section aria-label="Run history"><h3>Run history in {space}</h3><ul className="agent-run-list">{items.map(run=><li key={run.run_id}><button onClick={()=>onSelect(run.run_id)}>{run.run_id} · {run.workflow_id}<small>{run.status} · Revision {run.plan_revision}</small></button></li>)}</ul>{!busy&&!items.length&&!issue&&<p>No runs saved yet.</p>}{busy&&<p role="status">Loading runs…</p>}{after&&<button disabled={busy} onClick={()=>{if(active.current)void load(active.current,after);}}>Load more runs</button>}{issue&&<p role="alert">{issue}</p>}</section>;
 }
-export function RunPanel({api,space,plan,dirty,maxParallel,handoffsAvailable,inputsAvailable,usageAvailable,approvalsAvailable}:{api:ApiClient;space:string;plan:SavedPlan|null;dirty:boolean;maxParallel:number;handoffsAvailable:boolean;inputsAvailable:boolean;usageAvailable:boolean;approvalsAvailable:boolean}){
+export function RunPanel({api,space,plan,dirty,maxParallel,handoffsAvailable,inputsAvailable,usageAvailable,approvalsAvailable,historyAvailable=false}:{api:ApiClient;space:string;plan:SavedPlan|null;dirty:boolean;maxParallel:number;handoffsAvailable:boolean;inputsAvailable:boolean;usageAvailable:boolean;approvalsAvailable:boolean;historyAvailable?:boolean}){
  const [runId,setRunId]=useState<string>(()=>crypto.randomUUID()),[parallel,setParallel]=useState(1),[question,setQuestion]=useState(''),[busy,setBusy]=useState(false),[attempted,setAttempted]=useState(false),[issue,setIssue]=useState(''),[submitted,setSubmitted]=useState<RunSubmission|null>(null),[selected,setSelected]=useState<{id:string;version:number;expected?:RunSubmission}|null>(null),[history,setHistory]=useState(0),[lookup,setLookup]=useState('');
  const active=useRef<AbortController|null>(null);
  const approvalAttempts=useRef({api,space,items:new Map<string,ApprovalAttemptRef>()});
@@ -118,7 +120,7 @@ export function RunPanel({api,space,plan,dirty,maxParallel,handoffsAvailable,inp
   {attempted&&<div className="agent-actions"><button disabled={busy} onClick={()=>inspect(runId)}>Check submitted run</button><button disabled={busy} onClick={()=>{setRunId(crypto.randomUUID());setAttempted(false);setIssue('');}}>Prepare a new run</button><span>A new run calls the selected models again.</span></div>}
   {issue&&<p role="alert" className="agent-notice">{issue}</p>}
   <form className="agent-run-lookup" onSubmit={event=>{event.preventDefault();try{inspect(lookup);setIssue('');}catch(error){setIssue(message(error));}}}><label>Find run by identifier<input value={lookup} maxLength={128} required onChange={event=>setLookup(event.target.value)}/></label><button>Open run</button></form>
-  {selected&&<RunView approvalAttempt={pendingApproval(selected.id)} key={`${selected.id}:${selected.version}`} api={api} space={space} id={selected.id} expected={selected.expected} inputsAvailable={inputsAvailable} usageAvailable={usageAvailable} approvalsAvailable={approvalsAvailable} onChanged={()=>setHistory(n=>n+1)}/>}
+  {selected&&<RunView approvalAttempt={pendingApproval(selected.id)} key={`${selected.id}:${selected.version}`} api={api} space={space} id={selected.id} expected={selected.expected} inputsAvailable={inputsAvailable} usageAvailable={usageAvailable} approvalsAvailable={approvalsAvailable} historyAvailable={historyAvailable} onChanged={()=>setHistory(n=>n+1)}/>}
   <RunHistory api={api} space={space} version={history} onSelect={inspect}/>
  </section>;
 }

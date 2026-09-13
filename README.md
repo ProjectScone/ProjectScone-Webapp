@@ -475,6 +475,22 @@ The Python host must configure `AgentCatalog` and `AgentPlanStore` in `create_ap
 Hosts with run capabilities also support starting, cancelling and inspecting
 saved workflow runs in the browser. Native execution uses `AgentWorkflow`.
 
+When the host advertises `agents.history`, every opened run shows an
+**Execution timeline** below its results: the metadata the host recorded as
+the run executed -- observation start and end, turns, model and tool calls
+with their timing, tool outcomes by status and size, and the sequences the
+collector did not see -- one numbered entry per retained position. Prompts,
+tool arguments, answers and reasoning are never in these events, and an
+entry carrying any other field is withheld with an alert rather than shown.
+Positions removed by retention are named. **Load more** reads the next page
+from the cursor the host returned; **Follow live** opens the host's
+`text/event-stream` route from the last cursor, accepts a page only when its
+SSE id names it, reconnects from that cursor while the run is active when the
+host closes an observation window, and stops -- saying so -- after three
+windows without a new event, when the run is no longer active, or when the
+collector records that observation finished. Nothing in the timeline restarts
+a run or calls a model.
+
 Run `node --test scripts/test-agents.cjs` with the same Playwright environment
 variables used above. It verifies packaged desktop/mobile editing, persistence,
 forged save receipts, conflict/draft handling, delayed paging and capability gates.

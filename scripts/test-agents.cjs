@@ -6,7 +6,7 @@ const engines=require(process.env.SCONE_PLAYWRIGHT_MODULE||'playwright');
 const contract=require('../tests/fixtures/http-capabilities.json');let browser;
 before(async()=>{browser=await engines[process.env.SCONE_BROWSER_ENGINE||'chromium'].launch({headless:true,executablePath:process.env.SCONE_BROWSER_PATH});});
 after(async()=>{await browser?.close();});
-async function fixture(t,{mobile=false,supported=true,paged=false,runs=false,maxParallel=1,handoffs=false}={}){
+async function fixture(t,{mobile=false,supported=true,paged=false,runs=false,maxParallel=1,handoffs=false,history=false}={}){
  const html=fs.readFileSync(path.resolve(__dirname,'../dist/console.html'),'utf8').replaceAll('__SCONE_TOKEN__','agent-fixture');
  const state={handoffCapability:handoffs,saved:null,forged:false,hold:null,pageStarted:false,conflict:false,runs:new Map(),starts:0,cancels:0,complete:true,loseStart:false,forgeResult:false,substitute:false,forgeTarget:false,forgeFinal:false};
  const server=http.createServer(async(req,res)=>{
@@ -16,7 +16,7 @@ async function fixture(t,{mobile=false,supported=true,paged=false,runs=false,max
   assert.equal(req.headers.authorization,'Bearer agent-fixture');res.setHeader('content-type','application/json');
   const send=value=>res.end(JSON.stringify(value));
   if(url.pathname==='/v1/status')return send({space:'alpha',episodes:0});
-  if(url.pathname==='/v1/capabilities')return send({...contract.python,features:{...contract.python.features,'agents.handoffs':state.handoffCapability,'agents.catalog':supported,'agents.plans':supported,'agents.runs':runs,'agents.parallel':runs&&maxParallel>1}});
+  if(url.pathname==='/v1/capabilities')return send({...contract.python,features:{...contract.python.features,'agents.handoffs':state.handoffCapability,'agents.catalog':supported,'agents.plans':supported,'agents.runs':runs,'agents.parallel':runs&&maxParallel>1,'agents.history':history}});
   if(url.pathname==='/v1/agents/run-policy')return send({space:'alpha',max_parallel_tasks:maxParallel,max_active_runs:4});
   if(url.pathname==='/v1/agents/catalog')return send({agents:(handoffs?['research','write']:['research']).map(agent_id=>({agent_id,default_model:'fast',models:[{model_id:'fast',label:'Fast local',revision:'1'},{model_id:'careful',label:'Careful local',revision:'1'}]}))});
   if(url.pathname==='/v1/agent-plans'){
@@ -35,6 +35,24 @@ async function fixture(t,{mobile=false,supported=true,paged=false,runs=false,max
   if(runs&&url.pathname.startsWith('/v1/agent-runs/')){
    const parts=url.pathname.split('/'),run=state.runs.get(decodeURIComponent(parts[3]));if(!run){res.writeHead(404);return send({error:'missing'});}
    if(parts[4]==='request')return send(run.original);
+   if(parts[4]==='history'){
+    // Execution metadata for the run: three recorded positions, and a
+    // fourth that only the live stream delivers. Never any text.
+    const task=run.original.plan.plan.tasks[0],binding=run.original.plan.bindings[task.task_id];
+    const cursor=n=>'0'.repeat(32)+'.'+n.toString(16).padStart(16,'0')+'.'+'b'.repeat(64),invocation='c'.repeat(32),collection='d'.repeat(32);
+    const progress=(sequence,kind)=>({sequence,invocation_id:invocation,agent_id:task.agent_id,model_id:task.model_id,binding,kind,occurred_at:'2026-09-11T00:00:01Z',elapsed_s:0.25,operation_id:null,operation_kind:null,duration_s:null,tool_index:null,tool_name:null,status:null,error:null,output_bytes:null,origin:null,reused:null,journal_reused:null,presentation_reused:null});
+    const events=[{kind:'collection_started',collection_id:collection,occurred_at:'2026-09-11T00:00:00Z',invocation_id:null,last_sequence:0,observed_events:0,lost_events:0,terminal_kind:null,error:null},progress(1,'turn_started'),progress(2,'turn_completed'),
+     {kind:'collection_finished',collection_id:collection,occurred_at:'2026-09-11T00:00:02Z',invocation_id:invocation,last_sequence:2,observed_events:2,lost_events:0,terminal_kind:'turn_completed',error:null}];
+    const entry=(position)=>({position,step_id:task.task_id,selection_id:task.task_id,event:events[position-1],collection_id:collection,activation_id:null,...(state.leak?{text:'a private prompt'}:{})});
+    const after=url.searchParams.get('after'),from=after?parseInt(after.split('.')[1],16)+1:1;
+    const pageOf=(upto)=>{const items=[];for(let position=from;position<=upto;position++)items.push(entry(position));return {space:'alpha',run_id:run.status.run_id,available:true,items,next_after:cursor(items.length?upto:from-1),retained_from:1,omitted:null};};
+    if(parts[5]==='stream'){
+     state.streams=(state.streams??0)+1;state.streamAfter=after;
+     res.writeHead(200,{'content-type':'text/event-stream','cache-control':'no-store'});
+     const page=pageOf(4);res.write(': keep-alive\n\n');res.write('event: history\nid: '+page.next_after+'\ndata: '+JSON.stringify(page)+'\n\n');return res.end('event: end\ndata: {}\n\n');
+    }
+    return send(pageOf(3));
+   }
    if(parts[4]==='cancel'){state.cancels++;run.status={...run.status,status:'cancelled',active_local:false,outcome_unknown:true,error_class:'CancelledError'};return send(run.status);}
    if(parts[4]==='result'&&run.original.plan.plan.agents){
     const plan=run.original.plan.plan,first=plan.agents.find(agent=>agent.agent_id===plan.root_agent),target=first.can_handoff_to[0]??null,last=plan.agents.find(agent=>agent.agent_id===target);
@@ -140,6 +158,31 @@ test('history refreshes after a polled run finishes',async t=>{
  await page.getByLabel('Question',{exact:true}).fill('Track completion');const id=await page.getByLabel('Run identifier',{exact:true}).inputValue();await page.getByRole('button',{name:'Start run',exact:true}).click();await page.getByRole('button',{name:'Cancel run',exact:true}).waitFor();
  const run=state.runs.get(id);run.status={...run.status,status:'completed',active_local:false,completed_steps:['task-1'],inflight:null};
  await page.getByLabel('Verified run results').waitFor();await page.getByLabel('Run history').getByText('completed · Revision 1',{exact:true}).waitFor();assert.equal(state.starts,1);
+});
+
+for(const mobile of [false,true])test(`the run timeline shows recorded execution metadata and follows the live stream to its end, mobile=${mobile}`,async t=>{
+ const {page,state}=await fixture(t,{runs:true,history:true,mobile});await fill(page);await save(page);await page.getByText('Saved revision 1.',{exact:true}).waitFor();
+ await page.getByLabel('Question',{exact:true}).fill('Show me the timeline');await page.getByRole('button',{name:'Start run',exact:true}).click();
+ await page.getByLabel('Verified run results').waitFor();
+ const timeline=page.getByRole('region',{name:'Execution timeline',exact:true});await timeline.waitFor();
+ await timeline.getByText('Observation started',{exact:true}).waitFor();await timeline.getByText('Turn completed',{exact:true}).waitFor();
+ assert.equal(await timeline.locator('li').count(),3);assert.equal(await timeline.getByText('Observation finished',{exact:true}).count(),0);
+ await timeline.getByRole('button',{name:'Follow live',exact:true}).click();
+ await timeline.getByText('Observation finished',{exact:true}).waitFor();await timeline.getByText(/collector recorded no more events/).waitFor();
+ assert.equal(await timeline.locator('li').count(),4);assert.equal(state.streams,1);assert.match(state.streamAfter,/^0{32}\.0{15}3\./,'the stream resumed from the last recorded position');
+ assert.equal(await page.getByText('a private prompt').count(),0);assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+});
+test('a history entry carrying anything beyond metadata is withheld, not shown',async t=>{
+ const {page,state}=await fixture(t,{runs:true,history:true});state.leak=true;await fill(page);await save(page);await page.getByText('Saved revision 1.',{exact:true}).waitFor();
+ await page.getByLabel('Question',{exact:true}).fill('Show me the timeline');await page.getByRole('button',{name:'Start run',exact:true}).click();
+ const timeline=page.getByRole('region',{name:'Execution timeline',exact:true});await timeline.waitFor();
+ await timeline.getByRole('alert').waitFor();assert.match(await timeline.getByRole('alert').innerText(),/could not be verified/);
+ assert.equal(await timeline.locator('li').count(),0);assert.equal(await page.getByText('a private prompt').count(),0);
+});
+test('without the history capability no timeline is offered',async t=>{
+ const {page}=await fixture(t,{runs:true});await fill(page);await save(page);await page.getByText('Saved revision 1.',{exact:true}).waitFor();
+ await page.getByLabel('Question',{exact:true}).fill('No timeline here');await page.getByRole('button',{name:'Start run',exact:true}).click();
+ await page.getByLabel('Verified run results').waitFor();assert.equal(await page.getByRole('region',{name:'Execution timeline',exact:true}).count(),0);
 });
 
 async function fillHandoff(page){
