@@ -12,3 +12,10 @@
 .agent-output-requirements p{font-size:.85rem;line-height:1.5;color:var(--muted,#777);margin:0}
 .agent-output-requirements .agent-fields{margin-bottom:0}
 .agent-output-requirements textarea[spellcheck=false]{font-family:ui-monospace,SFMono-Regular,monospace;font-size:.85rem;line-height:1.5}
+
+.agent-tools {padding:12px 0;overflow-wrap:anywhere;}
+.agent-tools summary {cursor:pointer;font-weight:600;}
+.agent-tools ul {padding-left:20px;}
+.agent-tools li {margin:12px 0;}
+.agent-tools li p {white-space:pre-wrap;margin:4px 0;}
+.agent-tools small,.agent-tools-empty {color:var(--muted);}
