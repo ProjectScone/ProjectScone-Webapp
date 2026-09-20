@@ -2,10 +2,11 @@ import type {ApiClient} from '../api';
 
 export const MODEL_ROLES=['chat','extraction','vision','transcription','speech'] as const;
 export type ModelRole=typeof MODEL_ROLES[number];
-export interface ModelConnection {base_url:string;model:string;timeout_s:number;api_key_env:string|null;voice:string|null;sample_rate:number}
+export type InferenceProvider='self_hosted'|'openrouter';
+export interface ModelConnection {provider?:InferenceProvider;base_url:string;model:string;timeout_s:number;api_key_env:string|null;voice:string|null;sample_rate:number}
 export interface ModelConnections {schema_version:1;revision:number;connections:Record<ModelRole,ModelConnection|null>}
 export interface ModelProbe {models:string[];model_available:boolean}
-export interface ConnectionDraft {base_url:string;model:string;timeout_s:string;api_key_env:string;voice:string;sample_rate:string}
+export interface ConnectionDraft {provider:InferenceProvider;base_url:string;model:string;timeout_s:string;api_key_env:string;voice:string;sample_rate:string}
 type Client=Pick<ApiClient,'request'>;
 
 function object(value:unknown):Record<string,unknown>{
@@ -25,21 +26,25 @@ function endpoint(value:unknown):string{
 }
 function parseConnection(value:unknown):ModelConnection{
   const data=object(value);
-  const allowed=new Set(['base_url','model','timeout_s','api_key_env','voice','sample_rate']);
+  const allowed=new Set(['provider','base_url','model','timeout_s','api_key_env','voice','sample_rate']);
   if(Object.keys(data).some(key=>!allowed.has(key)))throw Error('Invalid model connection fields.');
   const timeout=data.timeout_s??180,rate=data.sample_rate??24000;
   if(typeof timeout!=='number'||!Number.isFinite(timeout)||timeout<1||timeout>600)throw Error('Timeout must be between 1 and 600 seconds.');
   if(typeof rate!=='number'||!Number.isInteger(rate)||rate<8000||rate>48000)throw Error('Sample rate must be an integer between 8000 and 48000 Hz.');
   let environment:string|null=null;
   if(data.api_key_env!=null){environment=text(data.api_key_env,'server token environment variable',128);if(!/^[A-Za-z_][A-Za-z0-9_]*$/.test(environment))throw Error('Enter an environment variable name, not a token.');}
-  return {base_url:endpoint(data.base_url),model:text(data.model,'model identifier',160),timeout_s:timeout,
+  const provider=data.provider??'self_hosted';
+  if(provider!=='self_hosted'&&provider!=='openrouter')throw Error('Unknown inference provider.');
+  const base=endpoint(data.base_url),model=text(data.model,'model identifier',160);
+  if(provider==='openrouter'&&(!['https://openrouter.ai/api/v1','https://openrouter.ai/api/v1/'].includes(base)||!/^[A-Za-z0-9][-\w.]*\/[A-Za-z0-9][-\w.]*$/.test(model)||!environment))throw Error('OpenRouter requires its HTTPS API URL, a provider/model identifier, and a server token variable.');
+  return {...(provider==='openrouter'?{provider}:{}),base_url:base,model,timeout_s:timeout,
     api_key_env:environment,voice:data.voice==null?null:text(data.voice,'voice identifier',120),sample_rate:rate};
 }
 export function parseModelConnections(value:unknown):ModelConnections{
   const data=object(value),connections=object(data.connections);
   if(data.schema_version!==1||typeof data.revision!=='number'||!Number.isSafeInteger(data.revision)||data.revision<0)throw Error('Invalid model settings version.');
   const parsed={} as Record<ModelRole,ModelConnection|null>;
-  for(const role of MODEL_ROLES){if(!(role in connections))throw Error('Model settings are missing a purpose.');parsed[role]=connections[role]===null?null:parseConnection(connections[role]);}
+  for(const role of MODEL_ROLES){if(!(role in connections))throw Error('Model settings are missing a purpose.');parsed[role]=connections[role]===null?null:parseConnection(connections[role]);if(role!=='chat'&&parsed[role]?.provider==='openrouter')throw Error('Cloud connections currently support conversations only.');}
   return {schema_version:1,revision:data.revision,connections:parsed};
 }
 export function parseModelProbe(value:unknown):ModelProbe{
@@ -48,11 +53,12 @@ export function parseModelProbe(value:unknown):ModelProbe{
   return {models:data.models.map(model=>text(model,'discovered model identifier',256)),model_available:data.model_available};
 }
 export function connectionDraft(value:ModelConnection|null):ConnectionDraft{
-  return {base_url:value?.base_url??'',model:value?.model??'',timeout_s:String(value?.timeout_s??180),
+  return {provider:value?.provider??'self_hosted',base_url:value?.base_url??'',model:value?.model??'',timeout_s:String(value?.timeout_s??180),
     api_key_env:value?.api_key_env??'',voice:value?.voice??'',sample_rate:String(value?.sample_rate??24000)};
 }
 export function connectionFromDraft(draft:ConnectionDraft,role:ModelRole):ModelConnection{
   const connection=parseConnection({...draft,timeout_s:Number(draft.timeout_s),sample_rate:Number(draft.sample_rate),api_key_env:draft.api_key_env.trim()||null,voice:draft.voice.trim()||null});
+  if(role!=='chat'&&connection.provider==='openrouter')throw Error('Cloud connections currently support conversations only.');
   if(role==='speech'&&!connection.voice)throw Error('Enter the voice identifier served by your speech model.');
   return connection;
 }
