@@ -46,3 +46,24 @@ test('discovery is an explicit models-only request and errors propagate unchange
   const conflict=Object.assign(new Error('Changed elsewhere'),{status:409});
   await assert.rejects(saveModelConnection({async request(){throw conflict;}},'chat',config,3,new AbortController().signal),error=>error===conflict);
 });
+
+test('explicit cloud selection survives reads and draft saves',async()=>{
+  const cloud={...config,provider:'openrouter' as const,base_url:'https://openrouter.ai/api/v1/',model:'google/gemma-4-31b-it',api_key_env:'SCONE_OPEN_ROUTER_API'};
+  const value={...snapshot,connections:{...snapshot.connections,chat:cloud}};
+  const parsed=parseModelConnections(value);
+  assert.equal(parsed.connections.chat?.provider,'openrouter');
+  assert.deepEqual(connectionFromDraft(connectionDraft(parsed.connections.chat),'chat'),cloud);
+  const calls:Array<{path:string;options?:RequestInit}>=[];
+  const api={async request<T>(path:string,options?:RequestInit):Promise<T>{calls.push({path,options});return value as T;}};
+  await saveModelConnection(api,'chat',cloud,3,new AbortController().signal);
+  assert.deepEqual(JSON.parse(String(calls[0].options?.body)),{expected_revision:3,connection:cloud});
+  for(const change of [{provider:'unknown'}, {model:'google/gemma-4-31b-it:free'},
+    {model:'../gemma'}, {model:'./gemma'},
+    {base_url:'https://openrouter.ai.evil.test/api/v1/'}, {api_key_env:null}]){
+    assert.throws(()=>parseModelConnections({...value,connections:{...value.connections,chat:{...cloud,...change}}}));
+  }
+  for(const role of ['extraction','vision','transcription','speech'] as const){
+    assert.throws(()=>connectionFromDraft(connectionDraft(cloud),role));
+    assert.throws(()=>parseModelConnections({...value,connections:{...value.connections,[role]:cloud}}));
+  }
+});
