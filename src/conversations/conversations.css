@@ -48,8 +48,14 @@
 .conversation-transcript-nav{padding:14px 24px;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;background:var(--surface)}
 .conversation-transcript-nav strong{display:block;font-size:12px;font-weight:600}.conversation-transcript-nav span{display:block;font-size:10px;color:var(--muted);margin-top:4px;line-height:1.6}
 .conversation-page-actions{display:flex;flex-wrap:wrap;gap:6px}.conversation-page-actions button{font-size:10px;padding:7px 9px;border-radius:7px}.conversation-page-actions button:disabled{opacity:.45}
-.conversation-message{max-width:94%;min-width:100px}.conversation-message.from-user{align-self:flex-end;padding:16px 19px;border:1px solid var(--line);border-radius:14px 14px 3px 14px;background:var(--bg)}
-.conversation-message.from-agent{align-self:flex-start;padding:5px 2px 16px;width:100%}.conversation-message p{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.85}
+.conversation-message{max-width:94%;min-width:100px;flex:none}.conversation-message.from-user{align-self:flex-end;padding:16px 19px;border:1px solid var(--line);border-radius:14px 14px 3px 14px;background:var(--bg)}
+.conversation-message.from-agent{align-self:flex-start;padding:5px 2px 16px;width:100%}.conversation-message>p{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.85}
+.conversation-reply-content{min-width:0;max-width:75ch;font-size:14px;line-height:1.65;white-space:normal}
+.conversation-reply-content .source-markdown p{font-size:inherit;line-height:inherit;white-space:normal;margin:.65em 0}
+.conversation-reply-content .source-markdown>:first-child{margin-top:0}
+.conversation-reply-content .source-markdown>:last-child{margin-bottom:0}
+.conversation-reply-content .source-markdown li>p{margin:.25em 0}
+.conversation-page .conversation-messages{scroll-padding-bottom:24px;margin-bottom:12px}
 .conversation-message-label{display:flex;gap:18px;align-items:center;justify-content:space-between;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.8px;margin-bottom:10px}
 .conversation-message-label button{background:none;border:0;padding:2px 0;font-size:10px;color:var(--muted);text-transform:none;letter-spacing:0}.conversation-message-label button:hover{color:var(--text);text-decoration:underline}
 .conversation-live{margin:0 24px 18px;padding:18px 20px;border:1px solid var(--line-strong);border-left:3px solid var(--accent);border-radius:12px;background:var(--bg);min-width:0}
