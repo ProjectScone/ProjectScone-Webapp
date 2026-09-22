@@ -4,6 +4,7 @@ import {ConversationEvidence} from './ConversationEvidence';
 import {DeleteConversation} from './DeleteConversation';
 import {RecallScopeSummary} from './RecallScopeControls';
 import {LiveReply} from './LiveReply';
+import {ReplyContent} from './ReplyContent';
 import {VoiceControls} from './VoiceControls';
 import {useTranscriptHeight} from './useTranscriptHeight';
 import {useConversationFade} from './useConversationFade';
@@ -163,7 +164,8 @@ export function ConversationSession({api,sid,onSession,textConfigured,voiceSuppo
     <div className={`conversation-messages${saved?.episodes.length===0&&busy?' is-pending-empty':''}`} role="region" aria-label="Conversation transcript">
       <div className="conversation-saved" role="region" aria-label="Saved messages">
       {saved===null?<p role="status">Loading saved messages…</p>:saved.episodes.length?saved.episodes.map(item=><article className={`conversation-message ${item.metadata.role==='user'?'from-user':'from-agent'}`} key={item.episode_id}>
-        <div className="conversation-message-label">{item.metadata.role==='user'?'You':item.metadata.role==='assistant'?'Assistant':'Recorded message'}<button onClick={()=>setSelected(item.episode_id)} aria-label={`Inspect message episode ${item.episode_id}`}>↗ Source {item.episode_id}</button></div><p>{item.content}</p>
+        <div className="conversation-message-label">{item.metadata.role==='user'?'You':item.metadata.role==='assistant'?'Assistant':'Recorded message'}<button onClick={()=>setSelected(item.episode_id)} aria-label={`Inspect message episode ${item.episode_id}`}>↗ Source {item.episode_id}</button></div>
+        {item.metadata.role==='assistant'?<ReplyContent text={item.content}/>:<p>{item.content}</p>}
       </article>):before?<p>No retained messages on this page. Return to a newer page.</p>:busy?<p className="conversation-caption">Waiting for saved messages…</p>:<div className="conversation-welcome"><div className="conversation-orbit" aria-hidden="true">✳</div><h3>{voice?'Your conversation, in words.':'Start with a question.'}</h3><p>{voice?'Completed public transcripts and replies appear here as they are saved.':'Bring your knowledge into the conversation.'}<br/>{voice?'Audio activity is not a saved transcript.':'Public messages and replies will be saved to this space.'}</p></div>}
       {saved?.has_more&&!paginationSupported&&<p className="conversation-notice">This is a partial transcript. This server does not support browsing older messages.</p>}
       </div>
