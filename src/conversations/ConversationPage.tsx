@@ -114,7 +114,7 @@ export function ConversationPage({api,enabled}:{api:ApiClient;enabled:boolean}){
       {error&&!dialog&&<div role="alert" className="conversation-notice">{error}</div>}
       {notice&&<p role="status" className="conversation-notice">{notice}</p>}
       <div className="conversation-layout">
-    {enabled&&cap&&sid&&idPattern.test(sid)?<ConversationSession key={sid} api={api} sid={sid} onSession={changed} textConfigured={cap.text_configured} voiceSupported={cap.voice} deletionSupported={cap.session_deletion} cancellationSupported={cap.turn_cancellation} paginationSupported={cap.transcript_pagination} streamingSupported={cap.streaming} onRemoved={deleted}/>:<ConversationReadiness enabled={enabled} state={service} cap={cap} invalidAddress={Boolean(sid&&!idPattern.test(sid))} onRetry={()=>setAttempt(n=>n+1)}/>}
+    {enabled&&cap&&sid&&idPattern.test(sid)?<ConversationSession key={sid} api={api} sid={sid} onSession={changed} resumptionSupported={cap.text_resumption} textConfigured={cap.text_configured} voiceSupported={cap.voice} deletionSupported={cap.session_deletion} cancellationSupported={cap.turn_cancellation} paginationSupported={cap.transcript_pagination} streamingSupported={cap.streaming} onRemoved={deleted}/>:<ConversationReadiness enabled={enabled} state={service} cap={cap} invalidAddress={Boolean(sid&&!idPattern.test(sid))} onRetry={()=>setAttempt(n=>n+1)}/>}
       </div>
     </div>
     {dialog&&<Modal title="Start a conversation" onClose={()=>{if(!starting)setDialog(false);}}><p className="setup-intro">Your configured model can receive context retrieved from this memory space. Public messages and replies will be saved as sources.</p>

@@ -10,7 +10,7 @@ import {useTranscriptHeight} from './useTranscriptHeight';
 import {useConversationFade} from './useConversationFade';
 import {session,transcript,turnReceipt,type ConversationSession as Session,type Transcript,type TurnResult} from './contracts';
 
-export function ConversationSession({api,sid,onSession,textConfigured,voiceSupported,deletionSupported,cancellationSupported,paginationSupported,streamingSupported,onRemoved}:{api:ApiClient;sid:string;onSession:(value:Session)=>void;textConfigured:boolean;voiceSupported:boolean;deletionSupported:boolean;cancellationSupported:boolean;paginationSupported:boolean;streamingSupported:boolean;onRemoved:(sid:string,acknowledged:boolean)=>void}){
+export function ConversationSession({api,sid,onSession,textConfigured,resumptionSupported,voiceSupported,deletionSupported,cancellationSupported,paginationSupported,streamingSupported,onRemoved}:{api:ApiClient;sid:string;onSession:(value:Session)=>void;textConfigured:boolean;resumptionSupported:boolean;voiceSupported:boolean;deletionSupported:boolean;cancellationSupported:boolean;paginationSupported:boolean;streamingSupported:boolean;onRemoved:(sid:string,acknowledged:boolean)=>void}){
   const threadRef=useTranscriptHeight();
   const [current,setCurrent]=useState<Session|null>(null),[saved,setSaved]=useState<Transcript|null>(null);
   const [error,setError]=useState(''),[draft,setDraft]=useState(''),[busy,setBusy]=useState(false),[verified,setVerified]=useState(false);
@@ -21,6 +21,7 @@ export function ConversationSession({api,sid,onSession,textConfigured,voiceSuppo
   const [cancelTarget,setCancelTarget]=useState<string|null>(null),[cancelling,setCancelling]=useState(false);
   const [pages,setPages]=useState<(string|null)[]>([null]);
   const lifetime=useRef(new AbortController()),mutation=useRef(false),request=useRef<string|null>(null),settled=useRef<string|null>(null),stopId=useRef<string|null>(null);
+  const resumeRequest=useRef<{request_id:string;expected_revision:number}|null>(null);
   const commandGeneration=useRef(0),invalidatedReceipt=useRef<string|null>(null);
   const pendingRequest=useRef<string|null>(null);
   const [liveTarget,setLiveTarget]=useState<string|null>(null),suppressedPreview=useRef<string|null>(null);
@@ -111,6 +112,24 @@ export function ConversationSession({api,sid,onSession,textConfigured,voiceSuppo
     }}
     finally{mutation.current=false;}
   }
+  async function resume(){
+    if(!resumptionSupported||!textConfigured||!current||current.mode==='voice'||!verified||mutation.current||!['ended','failed','interrupted'].includes(current.state))return;
+    const controller=lifetime.current;
+    resumeRequest.current??={request_id:crypto.randomUUID(),expected_revision:current.revision};
+    commandGeneration.current++;mutation.current=true;setBusy(true);setError('');
+    try{
+      const next=session(await api.request(url+'/resume',{method:'POST',body:JSON.stringify(resumeRequest.current),signal:AbortSignal.any([controller.signal,AbortSignal.timeout(10000)])}));
+      if(!controller.signal.aborted){
+        setCurrent(next);onSession(next);stopId.current=null;request.current=null;pendingRequest.current=null;
+        settled.current=null;resumeRequest.current=null;setBusy(false);setPages([null]);setAttempt(n=>n+1);
+        setDelivery(next.state==='running'?'Conversation resumed. Recent completed messages restored.':'The recorded session state has changed.');
+      }
+    }catch(error){if(!controller.signal.aborted){
+      if(error instanceof ApiError&&[400,401,403,404,409,422].includes(error.status))resumeRequest.current=null;
+      setError(error instanceof ApiError?error.message:'Resume was not confirmed. Checking the session; no message was resent.');
+      setBusy(false);setVerified(false);setAttempt(n=>n+1);
+    }}finally{mutation.current=false;}
+  }
   async function stop(){
     if(!current||!verified||mutation.current||current.state!=='running')return;
     setAudioStopRequested(true); // Local capture never waits for a remote stop receipt.
@@ -144,6 +163,7 @@ export function ConversationSession({api,sid,onSession,textConfigured,voiceSuppo
   const deliveryFade=useConversationFade<HTMLSpanElement>(deliveryMessage);
   return <><section ref={threadRef} className="conversation-thread" aria-label={voice?'Voice conversation':'Text conversation'}>
     <header className="conversation-thread-header"><div><span className="eyebrow">{voice?'Voice':'Text'} session · {sid.slice(0,8)}</span><h2>{current?.state==='ended'?'Conversation ended':current?.state==='interrupted'?'Conversation interrupted':current?.state==='failed'?'Conversation failed':'A conversation that remembers'}</h2></div>
+      {terminal&&resumptionSupported&&!voice&&<button onClick={()=>void resume()} disabled={!textConfigured||!verified||busy}>Resume conversation</button>}
       {terminal&&deletionSupported?<DeleteConversation api={api} sid={sid} enabled={verified} onRemoved={onRemoved}/>:<button onClick={stop} disabled={!verified||current?.state!=='running'}>End conversation</button>}</header>
     {current&&<RecallScopeSummary scope={current.recall_scope}/>}
     {current?.persona!==undefined&&<p className="session-persona" aria-label="Session persona"><span>Persona</span> <strong>{current.persona?(current.persona.current===false?current.persona.id:current.persona.name??current.persona.id):'Server default'}</strong>{current.persona&&<>
@@ -176,7 +196,7 @@ export function ConversationSession({api,sid,onSession,textConfigured,voiceSuppo
         if(event.key!=='Enter'||event.shiftKey||event.nativeEvent.isComposing||event.nativeEvent.keyCode===229)return;
         event.preventDefault();
         if(!event.repeat)void send();
-      }} aria-describedby="conversation-keyboard-hint" placeholder={!textConfigured?'Text runtime not configured. Saved messages are still available.':terminal?'This session is closed. Start a new conversation.':'Ask about something in your memory…'} disabled={!textConfigured||!verified||Boolean(terminal)} rows={3}/>
+      }} aria-describedby="conversation-keyboard-hint" placeholder={!textConfigured?'Text runtime not configured. Saved messages are still available.':terminal?(resumptionSupported?'Resume this conversation to send another message.':'This session is closed. Start a new conversation.'):'Ask about something in your memory…'} disabled={!textConfigured||!verified||Boolean(terminal)} rows={3}/>
       <span id="conversation-keyboard-hint" className="conversation-caption">Enter to send · Shift+Enter for a new line</span>
       <div className="conversation-composer-footer"><span role="status" ref={deliveryFade} className="conversation-delivery-transition">{deliveryMessage}</span>
         {cancellationSupported&&cancelTarget&&current?.state==='running'?<button type="button" disabled={!verified||cancelling} onClick={cancelReply}>{cancelling?'Cancelling…':'Cancel reply'}</button>:<button className="primary" type="submit" aria-label="Send message" disabled={!textConfigured||!verified||current?.state!=='running'||busy||!draft.trim()}>Send ↑</button>}

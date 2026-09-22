@@ -2,7 +2,7 @@ import {readScope,type RecallScope} from './recall-scope.ts';
 import {readPersonaIdentity,type PersonaIdentity} from './personas.ts';
 export type SessionState = 'created'|'running'|'stopping'|'ended'|'failed'|'interrupted';
 export interface ConversationSession {session_id:string;space:string;state:SessionState;mode?:'text'|'voice';revision:number;created_at:string;active_request_id?:string|null;latest_request_id?:string|null;recall_scope?:RecallScope;persona?:PersonaIdentity|null}
-export interface Capabilities {text_configured:boolean;session_deletion:boolean;turn_cancellation:boolean;transcript_pagination:boolean;recall_scope:boolean;streaming:boolean;voice:boolean;personas:number}
+export interface Capabilities {text_configured:boolean;text_resumption:boolean;session_deletion:boolean;turn_cancellation:boolean;transcript_pagination:boolean;recall_scope:boolean;streaming:boolean;voice:boolean;personas:number}
 export interface Episode {episode_id:number;content:string;metadata:Record<string,unknown>;created_at?:string}
 export interface Transcript {episodes:Episode[];has_more:boolean;next_before:string|null}
 export interface TurnResult {text:string;user_episode_id?:number;assistant_episode_id?:number;memory_context?:{status:string;references:{episode_id:number;chunk_id?:number}[];evidence_graph?:unknown}}
@@ -27,7 +27,7 @@ export function capabilities(value:unknown):Capabilities{
     &&audio.protocol==='scone-pcm-v1'&&audio.authentication==='hello'&&audio.reconnect===false
     &&audio.pcm==='s16le'&&Array.isArray(audio.input_channels)&&audio.input_channels.includes(1)
     &&audio.min_sample_rate===8000&&audio.max_sample_rate===192000&&audio.max_input_frame_bytes===64000;
-  return {text_configured:v.text_configured,session_deletion:v.session_deletion===true,turn_cancellation:v.turn_cancellation===true,transcript_pagination:v.transcript_pagination===true,recall_scope:v.recall_scope===true,streaming,voice,personas:v.personas as number|undefined??0};
+  return {text_configured:v.text_configured,text_resumption:v.text_configured&&v.text_resumption===true,session_deletion:v.session_deletion===true,turn_cancellation:v.turn_cancellation===true,transcript_pagination:v.transcript_pagination===true,recall_scope:v.recall_scope===true,streaming,voice,personas:v.personas as number|undefined??0};
 }
 export function session(value:unknown):ConversationSession{
   const v=record(value);
