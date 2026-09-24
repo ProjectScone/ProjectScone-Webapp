@@ -147,3 +147,11 @@ test('receipt availability rejects contradictions and cannot silently drop unrec
     {result:null},
   ])assert.throws(()=>turnReceipt({...completed,...invalid}));
 });
+
+
+test('text resume requires explicit server support and a configured text runtime',()=>{
+  const wire={schema_version:1,text_configured:true,reply_transport:'poll',reply_replay:'durable_receipts'};
+  for(const text_resumption of [undefined,false,'true',1,null])assert.equal(capabilities({...wire,text_resumption}).text_resumption,false);
+  assert.equal(capabilities({...wire,text_resumption:true}).text_resumption,true);
+  assert.equal(capabilities({...wire,text_configured:false,text_resumption:true}).text_resumption,false);
+});

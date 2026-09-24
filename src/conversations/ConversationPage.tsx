@@ -1,8 +1,8 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
-import {NavLink,useNavigate,useParams} from 'react-router-dom';
+import {Link,NavLink,useNavigate,useParams} from 'react-router-dom';
 import {ApiError,type ApiClient} from '../api';
 import {Modal} from '../components/Modal';
-import {WorkspaceHeading} from '../components/WorkspaceHeading';
+import {WorkspaceIcon} from '../components/WorkspaceIcon';
 import {capabilities,idPattern,session,sessionPage,type Capabilities,type ConversationSession as Session} from './contracts';
 import {ConversationSession} from './ConversationSession';
 import {ConversationReadiness,type ServiceState} from './ConversationReadiness';
@@ -13,6 +13,8 @@ import './conversations.css';
 
 export function ConversationPage({api,enabled}:{api:ApiClient;enabled:boolean}){
   const {sid}=useParams(),navigate=useNavigate();
+  const [historyOpen,setHistoryOpen]=useState(false);
+  const [historyQuery,setHistoryQuery]=useState('');
   const [cap,setCap]=useState<Capabilities|null>(null),[items,setItems]=useState<Session[]>([]),[after,setAfter]=useState<string|null>(null);
   const [service,setService]=useState<ServiceState>('checking'),[listState,setListState]=useState<'idle'|'loading'|'ready'|'failed'>('idle'),[listAttempt,setListAttempt]=useState(0);
   const [moreError,setMoreError]=useState(false),[loadingMore,setLoadingMore]=useState(false);
@@ -98,23 +100,28 @@ export function ConversationPage({api,enabled}:{api:ApiClient;enabled:boolean}){
     try{const page=sessionPage(await api.request('/v1/conversations?limit=100&after='+encodeURIComponent(after),{signal:controller.signal}));if(!controller.signal.aborted){setItems(previous=>[...previous,...page.items.filter(item=>!removed.current.has(item.session_id)&&!previous.some(old=>old.session_id===item.session_id))]);setAfter(page.next_after);}}
     catch{if(!controller.signal.aborted)setMoreError(true);}finally{locked.current=false;if(!controller.signal.aborted)setLoadingMore(false);}
   }
+  const openNew=()=>{if(!pendingCreate.current)setMode(cap?.text_configured?'text':'voice');setDialog(true);};
+  const canStart=enabled&&Boolean(cap?.text_configured||cap?.voice);
   return <main id="main" className="conversation-page">
-    <aside className="conversation-list" aria-label="Conversations"><button className="primary" disabled={!enabled||(!cap?.text_configured&&!cap?.voice)} onClick={()=>{if(!pendingCreate.current)setMode(cap?.text_configured?'text':'voice');setDialog(true);}}>New conversation</button>
+    <div className="conversation-commandbar">
+      <button className="thread-switcher" onClick={()=>setHistoryOpen(true)}><WorkspaceIcon name="chat"/>Conversations <span>{items.length||'—'}</span><span aria-hidden="true">⌄</span></button>
+      <span className="conversation-runtime">{!enabled?'Connection needed':service==='checking'?'Connecting…':cap?runtimeLabel:'Setup needed'}</span>
+      <button className="new-thread" disabled={!canStart} onClick={openNew}><span aria-hidden="true">＋</span> New conversation</button>
+    </div>
+    {historyOpen&&<Modal title="Your conversations" onClose={()=>setHistoryOpen(false)}><div className="conversation-history-picker"><label>Find a conversation<input type="search" value={historyQuery} onChange={event=>setHistoryQuery(event.target.value)} placeholder="Date, status or session ID"/></label>
       <div className="conversation-list-label"><span className="eyebrow">Saved sessions</span><span aria-label="Saved session count">{listState==='ready'||items.length?items.length:'—'}</span></div>
       {listState==='loading'&&<p role="status" className="conversation-list-status">Loading saved sessions…</p>}
       {listState==='failed'&&<div className="conversation-list-status"><p role="alert">Saved sessions could not be loaded. The conversation service is connected.</p><button onClick={()=>setListAttempt(n=>n+1)}>Retry saved sessions</button></div>}
       {listState==='ready'&&!items.length&&<p className="conversation-list-status">No saved sessions yet.</p>}
-      <nav aria-label="Saved conversations">{items.map(item=><NavLink key={item.session_id} to={'/conversations/'+encodeURIComponent(item.session_id)}><b>{item.session_id.slice(0,8)}</b><span>{item.state} · {new Date(item.created_at).toLocaleDateString()}</span></NavLink>)}</nav>
+      <nav aria-label="Saved conversations">{[...items].sort((a,b)=>Date.parse(b.created_at)-Date.parse(a.created_at)).filter(item=>`${item.session_id} ${item.state} ${new Date(item.created_at).toLocaleString()}`.toLowerCase().includes(historyQuery.toLowerCase())).map(item=><NavLink onClick={()=>setHistoryOpen(false)} key={item.session_id} to={'/conversations/'+encodeURIComponent(item.session_id)}><b>{new Date(item.created_at).toLocaleDateString(undefined,{month:"short",day:"numeric"})} · {new Date(item.created_at).toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"})}</b><span>{item.state} · {item.session_id.slice(0,8)}</span></NavLink>)}</nav>
       {moreError&&<p role="alert" className="conversation-list-status">More sessions could not be loaded. Try again below.</p>}
       {after&&<button disabled={loadingMore} onClick={more}>{loadingMore?'Loading more…':'Load more sessions'}</button>}
-      <p className="conversation-list-note">Sessions belong to this memory space. Leaving a voice session disconnects this tab’s microphone. Saved messages remain available.</p>
-    </aside>
+    </div></Modal>}
     <div className="conversation-workspace">
-      <WorkspaceHeading className="conversation-heading" eyebrow="Your knowledge, in conversation" title="Conversations" description="Ask. Remember. Pick up where the context left off." actions={<span className="conversation-mode">{!enabled?'Connection needed':service==='checking'?'Checking service…':cap?runtimeLabel:'Setup needed'}</span>}/>
       {error&&!dialog&&<div role="alert" className="conversation-notice">{error}</div>}
       {notice&&<p role="status" className="conversation-notice">{notice}</p>}
       <div className="conversation-layout">
-    {enabled&&cap&&sid&&idPattern.test(sid)?<ConversationSession key={sid} api={api} sid={sid} onSession={changed} textConfigured={cap.text_configured} voiceSupported={cap.voice} deletionSupported={cap.session_deletion} cancellationSupported={cap.turn_cancellation} paginationSupported={cap.transcript_pagination} streamingSupported={cap.streaming} onRemoved={deleted}/>:<ConversationReadiness enabled={enabled} state={service} cap={cap} invalidAddress={Boolean(sid&&!idPattern.test(sid))} onRetry={()=>setAttempt(n=>n+1)}/>}
+    {enabled&&cap&&sid&&idPattern.test(sid)?<ConversationSession key={sid} api={api} sid={sid} onSession={changed} resumptionSupported={cap.text_resumption} textConfigured={cap.text_configured} voiceSupported={cap.voice} deletionSupported={cap.session_deletion} cancellationSupported={cap.turn_cancellation} paginationSupported={cap.transcript_pagination} streamingSupported={cap.streaming} onRemoved={deleted}/>:canStart&&!sid?<section className="conversation-launch"><div className="launch-mark" aria-hidden="true">✳</div><p className="launch-kicker">A place for your thinking to continue</p><h1>Where were<br/>we going?</h1><p className="launch-description">Start with a question. Bring your memory.<br/>Leave with something to build on.</p><button className="launch-prompt" onClick={openNew}><span>What are you working through?</span><span className="launch-enter" aria-hidden="true">↗</span></button><div className="launch-paths"><button onClick={()=>setHistoryOpen(true)}><WorkspaceIcon name="chat"/><strong>Pick up a thread</strong><span>Return to a saved conversation</span></button><Link to="/playground"><WorkspaceIcon name="graph"/><strong>Follow a connection</strong><span>Explore the evidence in your memory</span></Link><Link to="/agents"><WorkspaceIcon name="scopes"/><strong>Put a model to work</strong><span>Build and inspect an agent workflow</span></Link></div></section>:<ConversationReadiness enabled={enabled} state={service} cap={cap} invalidAddress={Boolean(sid&&!idPattern.test(sid))} onRetry={()=>setAttempt(n=>n+1)}/>}
       </div>
     </div>
     {dialog&&<Modal title="Start a conversation" onClose={()=>{if(!starting)setDialog(false);}}><p className="setup-intro">Your configured model can receive context retrieved from this memory space. Public messages and replies will be saved as sources.</p>

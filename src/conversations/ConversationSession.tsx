@@ -1,4 +1,4 @@
-import {useCallback,useEffect,useRef,useState} from 'react';
+import {useCallback,useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {ApiError,type ApiClient} from '../api';
 import {ConversationEvidence} from './ConversationEvidence';
 import {DeleteConversation} from './DeleteConversation';
@@ -8,19 +8,36 @@ import {ReplyContent} from './ReplyContent';
 import {VoiceControls} from './VoiceControls';
 import {useTranscriptHeight} from './useTranscriptHeight';
 import {useConversationFade} from './useConversationFade';
+import type {TurnPerformance} from './performance';
+import {WorkspaceIcon} from '../components/WorkspaceIcon';
+import type {InspectorView} from './ConversationEvidence';
 import {session,transcript,turnReceipt,type ConversationSession as Session,type Transcript,type TurnResult} from './contracts';
 
-export function ConversationSession({api,sid,onSession,textConfigured,voiceSupported,deletionSupported,cancellationSupported,paginationSupported,streamingSupported,onRemoved}:{api:ApiClient;sid:string;onSession:(value:Session)=>void;textConfigured:boolean;voiceSupported:boolean;deletionSupported:boolean;cancellationSupported:boolean;paginationSupported:boolean;streamingSupported:boolean;onRemoved:(sid:string,acknowledged:boolean)=>void}){
+export function ConversationSession({api,sid,onSession,textConfigured,resumptionSupported,voiceSupported,deletionSupported,cancellationSupported,paginationSupported,streamingSupported,onRemoved}:{api:ApiClient;sid:string;onSession:(value:Session)=>void;textConfigured:boolean;resumptionSupported:boolean;voiceSupported:boolean;deletionSupported:boolean;cancellationSupported:boolean;paginationSupported:boolean;streamingSupported:boolean;onRemoved:(sid:string,acknowledged:boolean)=>void}){
   const threadRef=useTranscriptHeight();
+  const [inspector,setInspector]=useState<InspectorView|null>(null);
+  const inspectSource=(id:number)=>{setSelected(id);setInspector('sources');};
   const [current,setCurrent]=useState<Session|null>(null),[saved,setSaved]=useState<Transcript|null>(null);
   const [error,setError]=useState(''),[draft,setDraft]=useState(''),[busy,setBusy]=useState(false),[verified,setVerified]=useState(false);
+  const messageInput=useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(()=>{
+    const input=messageInput.current;
+    if(!input)return;
+    const resize=()=>{input.style.height='0px';input.style.height=`${Math.min(180,input.scrollHeight)}px`;};
+    resize();
+    window.addEventListener('resize',resize);
+    return()=>window.removeEventListener('resize',resize);
+  },[draft,current?.mode]);
   const [voiceVerified,setVoiceVerified]=useState(false),[audioStopRequested,setAudioStopRequested]=useState(false);
   const [delivery,setDelivery]=useState(''),[resultReceipt,setResultReceipt]=useState<{api:ApiClient;sid:string;value:TurnResult|undefined}>(),[selected,setSelected]=useState<number|null>(null);
   const result=resultReceipt?.api===api&&resultReceipt.sid===sid?resultReceipt.value:undefined;
+  const [timing,setTiming]=useState<{api:ApiClient;sid:string;value:TurnPerformance|undefined}>();
+  const performance=timing?.api===api&&timing.sid===sid?timing.value:undefined;
   const [attempt,setAttempt]=useState(0);
   const [cancelTarget,setCancelTarget]=useState<string|null>(null),[cancelling,setCancelling]=useState(false);
   const [pages,setPages]=useState<(string|null)[]>([null]);
   const lifetime=useRef(new AbortController()),mutation=useRef(false),request=useRef<string|null>(null),settled=useRef<string|null>(null),stopId=useRef<string|null>(null);
+  const resumeRequest=useRef<{request_id:string;expected_revision:number}|null>(null);
   const commandGeneration=useRef(0),invalidatedReceipt=useRef<string|null>(null);
   const pendingRequest=useRef<string|null>(null);
   const [liveTarget,setLiveTarget]=useState<string|null>(null),suppressedPreview=useRef<string|null>(null);
@@ -64,6 +81,7 @@ export function ConversationSession({api,sid,onSession,textConfigured,voiceSuppo
             const receipt=turnReceipt(await api.request(url+'/turns/'+encodeURIComponent(active),options));
             if(!isCurrent())return;
             if(receipt.request_id!==active)throw Error('Mismatched reply receipt');
+            setTiming({api,sid,value:receipt.performance});
             if(receipt.status==='pending'&&next.state==='running'&&suppressedPreview.current!==active)setLiveTarget(active);
             else if(receipt.status!=='pending'&&(receipt.result_state!=='available'||records.episodes.some(item=>item.episode_id===receipt.result?.assistant_episode_id)))setLiveTarget(null);
             setCancelTarget(receipt.status==='pending'?active:null);
@@ -82,7 +100,7 @@ export function ConversationSession({api,sid,onSession,textConfigured,voiceSuppo
                 if(isCurrent()){setSaved(latest);if(latest.episodes.some(item=>item.episode_id===receipt.result?.assistant_episode_id))setLiveTarget(null);}}
             }else setBusy(true);
           }catch{
-            if(isCurrent()){setLiveTarget(null);setCancelTarget(null);setDelivery('Reply receipt unavailable. No message was resent.');clearUnavailableEvidence(active);setBusy(Boolean(next.active_request_id)||settled.current!==active);}
+            if(isCurrent()){setTiming(undefined);setLiveTarget(null);setCancelTarget(null);setDelivery('Reply receipt unavailable. No message was resent.');clearUnavailableEvidence(active);setBusy(Boolean(next.active_request_id)||settled.current!==active);}
           }
         }else if(!next.active_request_id&&!mutation.current){setLiveTarget(null);setBusy(false);}
       }catch{
@@ -99,6 +117,7 @@ export function ConversationSession({api,sid,onSession,textConfigured,voiceSuppo
     if(!textConfigured||!current||current.mode==='voice'||!verified||busy||mutation.current||current.state!=='running'||!draft.trim())return;
     if(new TextEncoder().encode(draft).length>32000){setError('Keep messages within 32,000 UTF-8 bytes.');return;}
     commandGeneration.current++;
+    setTiming(undefined);
     const controller=lifetime.current,id=crypto.randomUUID();request.current=id;pendingRequest.current=id;mutation.current=true;setBusy(true);setDelivery('Sending message…');setError('');
     try{
       await api.request(url+'/turns',{method:'POST',body:JSON.stringify({request_id:id,text:draft,expected_revision:current.revision}),signal:AbortSignal.any([controller.signal,AbortSignal.timeout(10000)])});
@@ -110,6 +129,24 @@ export function ConversationSession({api,sid,onSession,textConfigured,voiceSuppo
       }else setDelivery('Delivery uncertain. Checking the same request; nothing will be resent automatically.');
     }}
     finally{mutation.current=false;}
+  }
+  async function resume(){
+    if(!resumptionSupported||!textConfigured||!current||current.mode==='voice'||!verified||mutation.current||!['ended','failed','interrupted'].includes(current.state))return;
+    const controller=lifetime.current;
+    resumeRequest.current??={request_id:crypto.randomUUID(),expected_revision:current.revision};
+    commandGeneration.current++;mutation.current=true;setBusy(true);setError('');
+    try{
+      const next=session(await api.request(url+'/resume',{method:'POST',body:JSON.stringify(resumeRequest.current),signal:AbortSignal.any([controller.signal,AbortSignal.timeout(10000)])}));
+      if(!controller.signal.aborted){
+        setCurrent(next);onSession(next);stopId.current=null;request.current=null;pendingRequest.current=null;
+        settled.current=null;resumeRequest.current=null;setBusy(false);setPages([null]);setAttempt(n=>n+1);
+        setDelivery(next.state==='running'?'Conversation resumed. Recent completed messages restored.':'The recorded session state has changed.');
+      }
+    }catch(error){if(!controller.signal.aborted){
+      if(error instanceof ApiError&&[400,401,403,404,409,422].includes(error.status))resumeRequest.current=null;
+      setError(error instanceof ApiError?error.message:'Resume was not confirmed. Checking the session; no message was resent.');
+      setBusy(false);setVerified(false);setAttempt(n=>n+1);
+    }}finally{mutation.current=false;}
   }
   async function stop(){
     if(!current||!verified||mutation.current||current.state!=='running')return;
@@ -140,20 +177,25 @@ export function ConversationSession({api,sid,onSession,textConfigured,voiceSuppo
   }
   const terminal=current&&['ended','failed','interrupted'].includes(current.state);
   const voice=current?.mode==='voice';
-  const deliveryMessage=delivery||(terminal?'Saved messages remain in your memory.':streamingSupported?'Live public text · saved replies verified separately':'Completed replies · not a token stream');
+  const deliveryMessage=delivery||(terminal?'Resume to continue.':'');
+  const routineDelivery=!deliveryMessage||['Reply saved','Reply in progress','Sending message…'].includes(deliveryMessage);
   const deliveryFade=useConversationFade<HTMLSpanElement>(deliveryMessage);
-  return <><section ref={threadRef} className="conversation-thread" aria-label={voice?'Voice conversation':'Text conversation'}>
-    <header className="conversation-thread-header"><div><span className="eyebrow">{voice?'Voice':'Text'} session · {sid.slice(0,8)}</span><h2>{current?.state==='ended'?'Conversation ended':current?.state==='interrupted'?'Conversation interrupted':current?.state==='failed'?'Conversation failed':'A conversation that remembers'}</h2></div>
+  return <div className={`conversation-workbench${inspector?' has-inspector':''}`}><section ref={threadRef} className="conversation-thread" aria-label={voice?'Voice conversation':'Text conversation'}>
+    <header className="conversation-thread-header"><div><span className="eyebrow">{voice?'Voice conversation':'Conversation'} · {current?new Date(current.created_at).toLocaleDateString(undefined,{month:'short',day:'numeric'}):sid.slice(0,8)}</span><h2>{current?.state==='ended'?'Conversation ended':current?.state==='interrupted'?'Conversation interrupted':current?.state==='failed'?'Conversation failed':'In progress'}</h2></div>
+      <button type="button" className="inspect-toggle" aria-pressed={inspector!==null} onClick={()=>setInspector(value=>value?null:'sources')}><WorkspaceIcon name="analytics"/>Inspect</button>
+      {terminal&&resumptionSupported&&!voice&&<button onClick={()=>void resume()} disabled={!textConfigured||!verified||busy}>Resume conversation</button>}
       {terminal&&deletionSupported?<DeleteConversation api={api} sid={sid} enabled={verified} onRemoved={onRemoved}/>:<button onClick={stop} disabled={!verified||current?.state!=='running'}>End conversation</button>}</header>
+    <details className="conversation-settings"><summary>Context & session settings</summary>
     {current&&<RecallScopeSummary scope={current.recall_scope}/>}
     {current?.persona!==undefined&&<p className="session-persona" aria-label="Session persona"><span>Persona</span> <strong>{current.persona?(current.persona.current===false?current.persona.id:current.persona.name??current.persona.id):'Server default'}</strong>{current.persona&&<>
       <small>{!current.persona.fingerprint?'Provider configuration version was not recorded.':current.persona.current===false?'Recorded configuration differs from the current catalog or is unavailable.':'Provider choices match the current catalog.'}</small>
       {current.persona.fingerprint&&<code title="Recorded provider-choice fingerprint; does not verify instructions or model weights">{current.persona.fingerprint}</code>}
     </>}</p>}
+    </details>
     {error&&<div className="conversation-notice" role="alert">{error}<button onClick={()=>setAttempt(n=>n+1)}>Check connection</button></div>}
     {!voice&&!textConfigured&&<p className="conversation-notice">History is available. Sending messages requires a text model configured on this server.</p>}
     {voice&&current&&<VoiceControls api={api} session={current} supported={voiceSupported} verified={voiceVerified} stopRequested={audioStopRequested}/>}
-    {paginationSupported&&<nav className="conversation-transcript-nav" aria-label="Transcript pages">
+    {paginationSupported&&(Boolean(before)||Boolean(saved?.has_more))&&<nav className="conversation-transcript-nav" aria-label="Transcript pages">
       <div><strong>{before?'Earlier messages':'Latest messages'}</strong><span>{saved?`${saved.episodes.length} messages on this page`:'Loading page…'}{before?' · New replies stay in Latest':''}</span></div>
       <div className="conversation-page-actions">
         {before&&<button onClick={()=>changePage([null])} disabled={!verified||mutation.current}>Latest messages</button>}
@@ -164,7 +206,7 @@ export function ConversationSession({api,sid,onSession,textConfigured,voiceSuppo
     <div className={`conversation-messages${saved?.episodes.length===0&&busy?' is-pending-empty':''}`} role="region" aria-label="Conversation transcript">
       <div className="conversation-saved" role="region" aria-label="Saved messages">
       {saved===null?<p role="status">Loading saved messages…</p>:saved.episodes.length?saved.episodes.map(item=><article className={`conversation-message ${item.metadata.role==='user'?'from-user':'from-agent'}`} key={item.episode_id}>
-        <div className="conversation-message-label">{item.metadata.role==='user'?'You':item.metadata.role==='assistant'?'Assistant':'Recorded message'}<button onClick={()=>setSelected(item.episode_id)} aria-label={`Inspect message episode ${item.episode_id}`}>↗ Source {item.episode_id}</button></div>
+        <div className="conversation-message-label">{item.metadata.role==='user'?'You':item.metadata.role==='assistant'?'Assistant':'Recorded message'}<button onClick={()=>inspectSource(item.episode_id)} aria-label={`Inspect message episode ${item.episode_id}`}>↗ Source {item.episode_id}</button></div>
         {item.metadata.role==='assistant'?<ReplyContent text={item.content}/>:<p>{item.content}</p>}
       </article>):before?<p>No retained messages on this page. Return to a newer page.</p>:busy?<p className="conversation-caption">Waiting for saved messages…</p>:<div className="conversation-welcome"><div className="conversation-orbit" aria-hidden="true">✳</div><h3>{voice?'Your conversation, in words.':'Start with a question.'}</h3><p>{voice?'Completed public transcripts and replies appear here as they are saved.':'Bring your knowledge into the conversation.'}<br/>{voice?'Audio activity is not a saved transcript.':'Public messages and replies will be saved to this space.'}</p></div>}
       {saved?.has_more&&!paginationSupported&&<p className="conversation-notice">This is a partial transcript. This server does not support browsing older messages.</p>}
@@ -172,15 +214,13 @@ export function ConversationSession({api,sid,onSession,textConfigured,voiceSuppo
       {!voice&&streamingSupported&&liveTarget&&<LiveReply key={liveTarget} api={api} sid={sid} requestId={liveTarget} onTerminal={streamTerminal}/>}
     </div>
     {current&&!voice&&<form className="conversation-composer" onSubmit={e=>{e.preventDefault();void send();}}>
-      <label htmlFor="conversation-message">Message</label><textarea id="conversation-message" value={draft} onChange={e=>setDraft(e.target.value)} onKeyDown={event=>{
+      <label htmlFor="conversation-message">Message</label><div className="composer-input"><textarea ref={messageInput} id="conversation-message" value={draft} onChange={e=>setDraft(e.target.value)} onKeyDown={event=>{
         if(event.key!=='Enter'||event.shiftKey||event.nativeEvent.isComposing||event.nativeEvent.keyCode===229)return;
         event.preventDefault();
         if(!event.repeat)void send();
-      }} aria-describedby="conversation-keyboard-hint" placeholder={!textConfigured?'Text runtime not configured. Saved messages are still available.':terminal?'This session is closed. Start a new conversation.':'Ask about something in your memory…'} disabled={!textConfigured||!verified||Boolean(terminal)} rows={3}/>
-      <span id="conversation-keyboard-hint" className="conversation-caption">Enter to send · Shift+Enter for a new line</span>
-      <div className="conversation-composer-footer"><span role="status" ref={deliveryFade} className="conversation-delivery-transition">{deliveryMessage}</span>
-        {cancellationSupported&&cancelTarget&&current?.state==='running'?<button type="button" disabled={!verified||cancelling} onClick={cancelReply}>{cancelling?'Cancelling…':'Cancel reply'}</button>:<button className="primary" type="submit" aria-label="Send message" disabled={!textConfigured||!verified||current?.state!=='running'||busy||!draft.trim()}>Send ↑</button>}
-      </div>
+      }} aria-describedby="conversation-keyboard-hint" placeholder={!textConfigured?'Messaging unavailable':terminal?'Resume this conversation to reply':'Message Scone…'} disabled={!textConfigured||!verified||Boolean(terminal)} rows={1}/>
+      {cancellationSupported&&cancelTarget&&current?.state==='running'?<button className="composer-send is-stop" type="button" aria-label={cancelling?'Cancelling reply':'Cancel reply'} title="Stop reply" disabled={!verified||cancelling} onClick={cancelReply}><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor"/></svg></button>:<button className="composer-send" type="submit" aria-label="Send message" title="Send message" disabled={!textConfigured||!verified||current?.state!=='running'||busy||!draft.trim()}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg></button>}
+      </div><div className="conversation-composer-footer"><span id="conversation-keyboard-hint" className="conversation-caption">Enter to send <span aria-hidden="true">·</span> Shift + Enter for a new line</span><span role="status" ref={deliveryFade} className={`conversation-delivery-transition${routineDelivery?' sr-only':''}`}>{deliveryMessage}</span></div>
     </form>}
-  </section><ConversationEvidence api={api} result={result} selected={selected} onSelect={setSelected}/></>;
+  </section>{inspector&&<ConversationEvidence api={api} result={result} performance={performance} selected={selected} onSelect={inspectSource} view={inspector} onView={setInspector} onClose={()=>setInspector(null)}/>}</div>;
 }

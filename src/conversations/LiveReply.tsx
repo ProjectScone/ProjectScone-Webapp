@@ -52,14 +52,11 @@ export function LiveReply({api,sid,requestId,onTerminal}:{api:ApiClient;sid:stri
     })();
     return()=>{disposed=true;clearTimeout(timer);controller.abort();};
   },[api,sid,requestId,attempt,onTerminal]);
-  const status=phase==='connecting'?'Connecting to live reply…':phase==='awaiting-text'?`Connected · waiting for reply${waitSeconds?` (${waitSeconds}s)`:''}…`:phase==='live'?'Receiving public text':phase==='interrupted'?'Live preview interrupted. Checking the saved reply.':phase==='limited'?'Preview size limit reached. Waiting for the saved reply.':'Live preview ended. Checking the saved reply.';
+  const status=phase==='connecting'?'Connecting…':phase==='awaiting-text'?(waitSeconds>=8?`Still working · ${waitSeconds}s`:'Thinking…'):phase==='live'?'Replying…':phase==='interrupted'?'Connection interrupted · checking reply':phase==='limited'?'Long reply · waiting for it to finish':text?'Saving…':'Checking reply…';
   return <section className="conversation-live" aria-label="Live reply preview">
-    <header><span className="conversation-live-badge"><span aria-hidden="true">◉</span> Live preview</span><span>Not yet a saved reply</span></header>
-    <div className="conversation-live-status" role="status">{status}</div>
+    <header className="conversation-message-label"><span>Assistant</span><span className="conversation-live-status" role="status"><i aria-hidden="true"/>{status}</span></header>
     {missing&&<p className="conversation-live-gap">Earlier live text is missing. Showing only the latest continuous segment.</p>}
-    {text&&owner.current===api&&<div className="conversation-live-text" tabIndex={0} aria-label="Provisional reply text"><ReplyContent text={text}/></div>}
-    <footer><span>Public text chunks, not a token count. The saved receipt determines the final outcome.</span>
-      {phase==='interrupted'&&retryable&&<button type="button" onClick={()=>setAttempt(n=>n+1)}>Reconnect preview</button>}
-    </footer>
+    {text&&owner.current===api&&<div className="conversation-live-text" aria-label="Provisional reply text"><ReplyContent text={text}/></div>}
+    {phase==='interrupted'&&retryable&&<button type="button" onClick={()=>setAttempt(n=>n+1)}>Reconnect reply</button>}
   </section>;
 }

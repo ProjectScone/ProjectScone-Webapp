@@ -3,22 +3,22 @@
    the outer application frame. */
 :root {
   color-scheme: light;
-  --bg: #f6f8fc;
-  --surface: #fff;
-  --raised: #edf2f9;
+  --bg: #f3f1eb;
+  --surface: #fffefa;
+  --raised: #eeece4;
   --surface-2: var(--raised);
-  --line: #e0e7f0;
-  --line-strong: #c4cfdf;
-  --text: #17243b;
+  --line: #deddd3;
+  --line-strong: #bbbdb0;
+  --text: #202d28;
   --ink: var(--text);
-  --muted: #596980;
-  --accent: #245dd8;
-  --accent-soft: #eaf0ff;
+  --muted: #626b62;
+  --accent: #30614c;
+  --accent-soft: #e6ecdf;
   --on-accent: #fff;
   --blue: var(--accent);
-  --green: #24775e;
+  --green: #30614c;
   --purple: #7754b5;
-  --amber: #916019;
+  --amber: #ad552e;
   --ok: var(--green);
   --warn: #a34238;
   --success-soft: #eaf5f0;
@@ -27,17 +27,17 @@
   --danger: var(--warn);
   --danger-hover: #84352d;
   --danger-soft: #fceeea;
-  --graph-session: #386cce;
+  --graph-session: #30614c;
   --graph-interaction: #b47839;
   --graph-memory: #27846e;
   --graph-claim: #8061bc;
-  --graph-anchor: #29446e;
-  --graph-anchor-hover: #345b92;
-  --graph-anchor-text: #c6d7f2;
-  --graph-link: #879cba;
-  --shadow: 0 3px 14px #17243b05;
-  --canvas: #f7f9fd;
-  --radius: 12px;
+  --graph-anchor: #263c32;
+  --graph-anchor-hover: #385344;
+  --graph-anchor-text: #e6ecdf;
+  --graph-link: #9baca0;
+  --shadow: 0 2px 8px #202d2805;
+  --canvas: #f5f3ed;
+  --radius: 6px;
   --control-height: 44px;
   --control-radius: 8px;
   --control-font: 13px;
@@ -46,13 +46,13 @@
   -webkit-font-smoothing: antialiased;
 }
 body { background: var(--bg); color: var(--text); }
-::selection { background: #cddfff; color: #132542; }
+::selection { background: #dfe8d5; color: #20382b; }
 button, input, select, textarea { font: inherit; }
 button { border-radius: 8px; font-weight: 500; transition: background-color .12s, border-color .12s; }
 button:hover:not(:disabled) { background: var(--raised); border-color: var(--line-strong); }
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible, [role=button]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 button.primary, .memory-page .btn:not(.quiet):not(.danger) { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
-button.primary:hover:not(:disabled), .memory-page .btn:not(.quiet):not(.danger):hover:not(:disabled) { background: #174cbd; border-color: #174cbd; color: white; filter: none; }
+button.primary:hover:not(:disabled), .memory-page .btn:not(.quiet):not(.danger):hover:not(:disabled) { background: #244b39; border-color: #244b39; color: white; filter: none; }
 button:disabled { cursor: not-allowed; }
 .eyebrow { font-size: 11px; letter-spacing: .1em; font-weight: 600; color: var(--muted); }
 .workspace-icon { width: 18px; height: 18px; flex-shrink: 0; }
@@ -107,7 +107,7 @@ button:disabled { cursor: not-allowed; }
 /* One canvas palette. Geometry, rather than theme switching, signals layout. */
 .workspace .evidence-atlas { height: 600px; border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); grid-template-columns: minmax(0,1fr) 300px; }
 .workspace .evidence-atlas.map-only { grid-template-columns: minmax(0,1fr); }
-.workspace .evidence-atlas .graph-panel { background-color: var(--canvas); background-image: radial-gradient(#c6d2e6 .65px, transparent .8px); background-size: 26px 26px; }
+.workspace .evidence-atlas .graph-panel { background-color: var(--canvas); background-image: radial-gradient(#c9cec1 .65px, transparent .8px); background-size: 26px 26px; }
 .evidence-atlas .graph-title { color: var(--text); font-size: 12px; font-weight: 600; }
 .evidence-atlas .graph-top { top: 18px; left: 22px; right: 22px; gap: 12px; }
 .evidence-atlas .graph-navigation { top: 69px; left: 22px; right: 22px; gap: 10px; color: var(--muted); }
@@ -122,7 +122,7 @@ button:disabled { cursor: not-allowed; }
 .layout-option b { font-size: 13px; color: var(--text); }
 .layout-option small { font-size: 11px; color: var(--muted); }
 .layout-option svg { background: var(--bg); }
-.evidence-atlas .layout-option[aria-checked=true] { background: var(--accent-soft); border-color: #d1dfff; }
+.evidence-atlas .layout-option[aria-checked=true] { background: var(--accent-soft); border-color: #cedbc3; }
 .evidence-atlas .layout-option:hover, .evidence-atlas .layout-option:focus-visible { background: var(--raised); border-color: var(--accent); }
 .layout-check { color: var(--accent); }
 .evidence-atlas .view-switch, .evidence-atlas .zoom { background: var(--surface); border-color: var(--line); box-shadow: 0 2px 5px #17243b06; }
@@ -217,7 +217,7 @@ button:disabled { cursor: not-allowed; }
 /* Conversations use the same rails, headers and action hierarchy. */
 .conversation-page { display: grid; grid-template-columns: var(--rail-width) minmax(0,1fr); max-width: none; padding: 0; min-height: calc(100dvh - 110px); }
 .conversation-workspace { min-width: 0; padding: 36px 32px 48px; }
-.conversation-mode { border-radius: 8px; color: var(--accent); background: var(--accent-soft); border-color: #d1dfff; font-size: 12px; }
+.conversation-mode { border-radius: 8px; color: var(--accent); background: var(--accent-soft); border-color: #cedbc3; font-size: 12px; }
 .conversation-layout { grid-template-columns: minmax(0,1fr) 300px; min-height: 650px; border-radius: var(--radius); box-shadow: var(--shadow); }
 .conversation-list { background: var(--surface); padding: 30px 16px 20px; position: sticky; top: 0; align-self: start; height: calc(100dvh - 110px); min-height: 360px; grid-row: auto; }
 .conversation-list nav { min-height: 0; flex: 1; max-height: none; overflow: auto; padding: 4px; margin-inline: -4px; }
@@ -351,10 +351,10 @@ button:disabled { cursor: not-allowed; }
   flex-shrink: 0;
 }
 .workspace-action { border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent); text-decoration: none; }
-.workspace-action:hover { background: #174cbd; color: white; }
+.workspace-action:hover { background: #244b39; color: white; }
 .workspace-action.quiet { border-color: var(--line-strong); background: var(--surface); color: var(--text); }
 .workspace-action.quiet:hover { background: var(--raised); }
-:is(.memory-page,.conversation-page,.setup-dialog) :is(input:not([type=file]):not([type=checkbox]):not([type=radio]),select,textarea) {
+:is(.memory-page,.conversation-page,.setup-dialog) :where(input:not([type=file]):not([type=checkbox]):not([type=radio]),select,textarea) {
   border: 1px solid var(--line-strong); border-radius: var(--control-radius);
   background-color: var(--surface); color: var(--text); font-size: var(--control-font);
 }

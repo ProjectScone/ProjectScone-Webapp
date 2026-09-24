@@ -399,12 +399,16 @@ function ResultRow({ item, api, onScope, onTag, why }: { item: RecallItem; api: 
     <div className="row">
       <div className="meta">
         <span>{day(item.created_at)}</span><SourceLink source={item.source} />
-        {Object.entries(item.metadata ?? {}).map(([k, v]) => <button key={k} className="linkish" title={`Search within ${k} ${v}`} onClick={() => onScope(k, v)}>{k.replace(/_/g, " ")} {v}</button>)}
-        {(item.tags ?? []).map((t) => <button key={t} className="linkish" title={`Add tag filter ${t}`} onClick={() => onTag(t)}>#{t}</button>)}
       </div>
       <div className="text"><span className="label">excerpt</span>{item.text}</div>
+      <details className="source-row-details"><summary>Source details & filters</summary><div className="meta">
+        {Object.entries(item.metadata ?? {}).map(([k, v]) => <button key={k} className="linkish" title={`Search within ${k} ${v}`} onClick={() => onScope(k, v)}>{k.replace(/_/g, " ")} {v}</button>)}
+        {(item.tags ?? []).map((t) => <button key={t} className="linkish" title={`Add tag filter ${t}`} onClick={() => onTag(t)}>#{t}</button>)}
+      </div></details>
+      <div className="source-row-actions">
       <SourcePageLink api={api} episodeId={item.episode_id}/>
       <SourceImages episodeId={item.episode_id} api={api} />
+      </div>
       {why}
     </div>
   );
